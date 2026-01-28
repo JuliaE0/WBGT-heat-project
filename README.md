@@ -7,7 +7,6 @@ Data used
 heatmetrics package 
 
 - You can install the heatmetrics R Package from https://figshare.com/articles/software/heatmetrics_R_Package/19739965?file=36838296.
-- This package works on high-resolution gridded reanalysis data.
 
 Sources
 

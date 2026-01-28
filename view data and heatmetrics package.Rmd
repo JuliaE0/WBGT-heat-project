@@ -1,0 +1,32 @@
+---
+title: "Data"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, results='asis', message=FALSE, warning=FALSE, collapse=TRUE)
+```
+
+```{r}
+library(heatmetrics)
+ls("package:heatmetrics") # functions in the heatmetrics package
+```
+
+Data source:
+
+Muñoz Sabater, J. (2019): ERA5-Land hourly data from 1950 to present. Copernicus Climate Change Service (C3S) Climate Data Store (CDS). DOI: 10.24381/cds.e2161bac (Accessed on 27-01-2026)
+
+Hersbach, H., Bell, B., Berrisford, P., Biavati, G., Horányi, A., Muñoz Sabater, J., Nicolas, J., Peubey, C., Radu, R., Rozum, I., Schepers, D., Simmons, A., Soci, C., Dee, D., Thépaut, J-N. (2023): ERA5 hourly data on single levels from 1940 to present. Copernicus Climate Change Service (C3S) Climate Data Store (CDS), DOI: 10.24381/cds.adbb2d47 (Accessed on 27-01-2026)
+
+
+```{r}
+library(ncdf4)
+era5land <- nc_open("era5-land.nc") # era5-land variables (doesn't have fdir)
+names(era5land$var)
+
+era5 <- nc_open("era5.nc") # era5 fdir variable
+names(era5$var)
+```
+
+
+

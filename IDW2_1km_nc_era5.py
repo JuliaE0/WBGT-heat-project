@@ -11,6 +11,8 @@ ERA5 variables -> subset -> IDW to target grid defined by GeoTIFF -> export one 
 Reads target grid geoinfo (bounds, resolution, CRS, shape) from: 
 GeoTIFF file derived from ERA5-Land
 
+Outputs a folder containing individual .nc file for each variable.
+
 Dependencies:
   pip install rasterio pyproj xarray netcdf4 numpy scipy
 """
@@ -42,18 +44,12 @@ POWER = 2.0
 BUFFER_DEG = 0.20
 
 # Variable names in ERA5
-ERA5_VAR_CANDIDATES = ("ssrd", "fdir")
+ERA5_VAR = ("ssrd", "fdir")
 
 # =========================
 # END USER SETTINGS
 # =========================
 
-
-#def pick_varname(ds, candidates):
-#    for v in candidates:
-#        if v in ds.data_vars:
-#            return v
-#    raise KeyError(f"None of {candidates} found. Available: {list(ds.data_vars)}")
 
 
 def read_target_grid_from_tif(tif_path):
@@ -229,8 +225,7 @@ def process_one_year(nc_path, tgt_lons, tgt_lats, target_points, bounds_wgs84):
     print(f"\nOpening: {nc_path}")
     ds = xr.open_dataset(nc_path)
 
-    # varname = pick_varname(ds, ERA5_VAR_CANDIDATES)
-    for varname in ERA5_VAR_CANDIDATES:
+    for varname in ERA5_VAR:
         if varname not in ds.data_vars:
             continue
 

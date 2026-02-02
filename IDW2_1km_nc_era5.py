@@ -44,7 +44,7 @@ POWER = 2.0
 BUFFER_DEG = 0.20
 
 # Variable names in ERA5
-ERA5_VAR = ("ssrd", "fdir")
+ERA5_VAR = ["fdir"]
 
 # =========================
 # END USER SETTINGS
@@ -114,7 +114,7 @@ def read_target_grid_from_tif(tif_path):
 
 
 def subset_source(ds, varname, bounds_wgs84, buffer_deg):
-    """Subset ERA5 data to WGS84 bounds + buffer."""
+    """Subset ERA5 data to bounds + buffer."""
     min_lon, min_lat, max_lon, max_lat = bounds_wgs84
     lon_min = min_lon - buffer_deg
     lon_max = max_lon + buffer_deg

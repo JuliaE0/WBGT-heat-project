@@ -21,12 +21,60 @@ Hersbach, H., Bell, B., Berrisford, P., Biavati, G., Horányi, A., Muñoz Sabate
 
 ```{r}
 library(ncdf4)
-era5land <- nc_open("era5-land.nc") # era5-land variables (doesn't have fdir)
+```
+
+```{r}
+era5land <- nc_open("era5-land.nc") # era5-land
 names(era5land$var)
 
-era5 <- nc_open("era5.nc") # era5 fdir variable
+era5 <- nc_open("era5.nc") # era5
 names(era5$var)
 ```
 
+```{r}
+# preprocessed dataset (doesn't have urban variable yet)
+ds_work <- nc_open("ds_work.nc")
+names(ds_work$var)
+```
+
+```{r}
+# get inputs for calc_cza_int
+lat <- ncvar_get(ds_work, "latitude")
+lon <- ncvar_get(ds_work, "longitude")
+year  <- ncvar_get(ds_work, "year")
+month <- ncvar_get(ds_work, "month")
+day   <- ncvar_get(ds_work, "day")
+hour  <- ncvar_get(ds_work, "hour")
+
+# expand to full grid
+grid <- expand.grid(t = seq_along(year), lat = lat, lon = lon)
+grid$y   <- year[grid$t]
+grid$mon <- month[grid$t]
+grid$d   <- day[grid$t]
+grid$hr  <- hour[grid$t]
+
+# call calc_cza_int()
+cza <- calc_cza_int(grid$lat, grid$lon, grid$y, grid$mon, grid$d, grid$hr)
+
+# reshape back to 3-dimensional array
+ntime <- length(year)
+nlat <- length(lat)
+nlon <- length(lon)
+
+cza_array <- array(cza, dim = c(ntime, nlat, nlon))
+```
+
+
+```{r}
+# check structure of cza_array
+
+dim(cza_array)
+summary(cza_array) # check that all values are in [0,1]
+```
+
+```{r}
+# possibly put cza_array into ds_work as a variable
+
+```
 
 

@@ -24,10 +24,10 @@ library(ncdf4)
 ```
 
 ```{r}
-era5land <- nc_open("era5-land.nc") # era5-land
+era5land <- nc_open("era5-land_2019.nc") # era5-land
 names(era5land$var)
 
-era5 <- nc_open("era5.nc") # era5
+era5 <- nc_open("era5_2019.nc") # era5
 names(era5$var)
 ```
 

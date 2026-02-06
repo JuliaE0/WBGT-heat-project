@@ -24,6 +24,7 @@ library(ncdf4)
 library(terra)
 ```
 
+
 ```{r}
 era5land <- nc_open("era5-land_2019.nc") # era5-land
 names(era5land$var)
@@ -32,12 +33,14 @@ era5 <- nc_open("era5_2019.nc") # era5
 names(era5$var)
 ```
 
+
 ```{r}
 # preprocessed dataset (doesn't have urban variable yet)
 ds_work <- nc_open("ds_work.nc")
 names(ds_work$var)
 dim(ncvar_get(ds_work, "fdir")) # view dimensions, R shows dimensions as longitude x latitude x time
 ```
+
 
 ```{r}
 # get inputs for calc_cza_int
@@ -97,6 +100,8 @@ dim(cza_array_ca) # check dimensions of cropped array
 #plot(r_cza_ca[[20]])  # TO DO: plot using the cropped array
 #title(main = paste("cza at", plot_time), line=3)
 ```
+
+
 ```{r}
 # check that cza_array_ca is actually cropped to CA by plotting it
 
@@ -126,7 +131,7 @@ title(main = "solar at 2019-08-01 12:00", line=3)
 
 
 ```{r}
-# possibly put cza_array into ds_work as a variable
+# possibly put cza_array_ca into ds_work as a variable
 ```
 
 

@@ -21,6 +21,7 @@ Hersbach, H., Bell, B., Berrisford, P., Biavati, G., Horányi, A., Muñoz Sabate
 
 ```{r}
 library(ncdf4)
+library(terra)
 ```
 
 ```{r}
@@ -35,6 +36,7 @@ names(era5$var)
 # preprocessed dataset (doesn't have urban variable yet)
 ds_work <- nc_open("ds_work.nc")
 names(ds_work$var)
+dim(ncvar_get(ds_work, "fdir")) # see dimensions, R shows dimensions as lonxlatxtime
 ```
 
 ```{r}
@@ -68,13 +70,43 @@ cza_array <- array(cza, dim = c(ntime, nlat, nlon))
 ```{r}
 # check structure of cza_array
 
-dim(cza_array)
+dim(cza_array)  # should be time=744, latitude=96, longitude=105
 summary(cza_array) # check that all values are in [0,1]
 ```
 
+
+```{r}
+# plot cza at a single valid_time
+
+cza_array_for_plot <- aperm(cza_array, c(2,3,1))   # lat, lon, time
+r_cza <- rast(cza_array_for_plot)
+ext(r_cza) <- c(min(lon), max(lon), min(lat), max(lat))
+crs(r_cza) <- "EPSG:4326"
+ca <- vect("ca_state/CA_State.shp")
+ca_ll <- project(ca, crs(r_cza))
+r_cza_ca <- crop(r_cza, ca_ll, snap="out")
+
+plot(r_cza_ca[[1]])  # TO DO: figure out what datetime this is
+lines(ca_ll)
+```
+
+
+```{r}
+# just checking
+# plot with ds_work solar variable at a single valid_time
+
+r <- rast("ds_work.nc", subds = "solar")
+time_raw <- ncvar_get(ds_work, "valid_time")
+time_units <- ncatt_get(ds_work, "valid_time", "units")$value
+time_vals <- as.POSIXct(time_raw, origin="1970-01-01", tz="UTC")
+time(r) <- time_vals
+t_index <- which(time_vals == as.POSIXct("2019-08-01 12:00", tz="UTC"))
+plot(r[[t_index]])
+```
+
+
 ```{r}
 # possibly put cza_array into ds_work as a variable
-
 ```
 
 

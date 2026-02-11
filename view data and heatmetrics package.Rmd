@@ -1,5 +1,5 @@
 ---
-title: "Data"
+title: "calculate_cza"
 output: pdf_document
 ---
 
@@ -32,20 +32,20 @@ names(era5$var)
 ```
 
 ```{r}
-# preprocessed dataset (doesn't have urban variable yet)
-ds_work <- nc_open("ds_work.nc")
-names(ds_work$var)
-dim(ncvar_get(ds_work, "fdir")) # view dimensions, R shows dimensions as longitude x latitude x time
+# open and view preprocessed dataset
+wbgt_inputs_aug_2019 <- nc_open("wbgt_inputs_aug_2019.nc")
+names(wbgt_inputs_aug_2019$var)
+dim(ncvar_get(wbgt_inputs_aug_2019, "fdir")) # R shows dimensions as longitude x latitude x time
 ```
 
 ```{r}
 # get inputs for calc_cza_int
-lat <- ncvar_get(ds_work, "latitude")
-lon <- ncvar_get(ds_work, "longitude")
-year  <- ncvar_get(ds_work, "year")
-month <- ncvar_get(ds_work, "month")
-day   <- ncvar_get(ds_work, "day")
-hour  <- ncvar_get(ds_work, "hour")
+lat <- ncvar_get(wbgt_inputs_aug_2019, "latitude")
+lon <- ncvar_get(wbgt_inputs_aug_2019, "longitude")
+year  <- ncvar_get(wbgt_inputs_aug_2019, "year")
+month <- ncvar_get(wbgt_inputs_aug_2019, "month")
+day   <- ncvar_get(wbgt_inputs_aug_2019, "day")
+hour  <- ncvar_get(wbgt_inputs_aug_2019, "hour")
 
 # expand to full grid
 grid <- expand.grid(lon = lon, lat = lat, t = seq_along(year))
@@ -54,7 +54,7 @@ grid$mon <- month[grid$t]
 grid$d   <- day[grid$t]
 grid$hr  <- hour[grid$t]
 
-# call calc_cza_int() ---- takes a few minutes
+# call calc_cza_int() ---- takes about 10 minutes
 cza <- calc_cza_int(grid$lat, grid$lon, grid$y, grid$mon, grid$d, grid$hr)
 
 # reshape back to 3-dimensional array
@@ -66,8 +66,8 @@ cza_array <- array(cza, dim = c(nlon, nlat, ntime))
 ```
 
 ```{r}
-# check that dimensions of cza_array match dimensions of ds_work
-dim(ncvar_get(ds_work, "solar"))
+# check that dimensions of cza_array match dimensions of wbgt_inputs_aug_2019
+dim(ncvar_get(wbgt_inputs_aug_2019, "solar"))
 dim(cza_array)  # longitude x latitude x time
 
 summary(cza_array) # check that all values are in [0,1]
@@ -95,7 +95,7 @@ dim(cza_array_ca) # check dimensions of cropped array
 ```{r}
 # check that cza_array_ca is actually cropped to CA by plotting it
 
-times <- as.POSIXct(ncvar_get(ds_work, "valid_time"), origin = "1970-01-01", tz = "UTC")
+times <- as.POSIXct(ncvar_get(wbgt_inputs_aug_2019, "valid_time"), origin = "1970-01-01", tz = "UTC")
 t_index <- which(times == as.POSIXct("2019-08-01 18:00", tz="UTC"))
 r_cza_ca <- rast(aperm(cza_array_ca, c(2,1,3)))
 ext(r_cza_ca) <- c(min(lon), max(lon), min(lat), max(lat))
@@ -105,15 +105,15 @@ title(main = paste("cza at", times[t_index]), line=3)
 ```
 
 ```{r}
-# put cza_array_ca into ds_work as a variable -- edited ds_work directly
+# put cza_array_ca into wbgt_inputs_aug_2019 as a variable -- edited wbgt_inputs_aug_2019 directly
 
-nc_close(ds_work)
+nc_close(wbgt_inputs_aug_2019)
 
-ds_work <- nc_open("ds_work.nc", write = TRUE)
+wbgt_inputs_aug_2019 <- nc_open("wbgt_inputs_aug_2019.nc", write = TRUE)
 
-dim_lon  <- ds_work$dim$longitude
-dim_lat  <- ds_work$dim$latitude
-dim_time <- ds_work$dim$valid_time
+dim_lon  <- wbgt_inputs_aug_2019$dim$longitude
+dim_lat  <- wbgt_inputs_aug_2019$dim$latitude
+dim_time <- wbgt_inputs_aug_2019$dim$valid_time
 
 cza <- ncvar_def(
   name = "cza",
@@ -124,28 +124,28 @@ cza <- ncvar_def(
   prec = "float"
 )
 
-ds_work <- ncvar_add(ds_work, cza)
+wbgt_inputs_aug_2019 <- ncvar_add(wbgt_inputs_aug_2019, cza)
 
-ncvar_put(ds_work, cza, cza_array_ca)
+ncvar_put(wbgt_inputs_aug_2019, cza, cza_array_ca)
 
-nc_close(ds_work)
+nc_close(wbgt_inputs_aug_2019)
 ```
 
 ```{r}
-# check ds_work
+# check wbgt_inputs_aug_2019
 
-ds_work <- nc_open("ds_work.nc")
-names(ds_work$var)
-dim(ncvar_get(ds_work, "fdir")) # view dimensions, R shows dimensions as longitude x latitude x time
+wbgt_inputs_aug_2019 <- nc_open("wbgt_inputs_aug_2019.nc")
+names(wbgt_inputs_aug_2019$var)
+dim(ncvar_get(wbgt_inputs_aug_2019, "fdir")) # R shows dimensions as longitude x latitude x time
 ```
 
 ```{r}
 # just checking
-# plot with ds_work Tair variable at a single valid_time
+# plot with wbgt_inputs_aug_2019 Tair variable at a single valid_time
 
-r <- rast("ds_work.nc", subds = "Tair")
-time_raw <- ncvar_get(ds_work, "valid_time")
-time_units <- ncatt_get(ds_work, "valid_time", "units")$value
+r <- rast("wbgt_inputs_aug_2019.nc", subds = "Tair")
+time_raw <- ncvar_get(wbgt_inputs_aug_2019, "valid_time")
+time_units <- ncatt_get(wbgt_inputs_aug_2019, "valid_time", "units")$value
 time_vals <- as.POSIXct(time_raw, origin="1970-01-01", tz="UTC")
 time(r) <- time_vals
 t_index <- which(time_vals == as.POSIXct("2019-08-01 18:00", tz="UTC"))
@@ -154,24 +154,30 @@ title(main = "Tair at 2019-08-01 12:00", line=3)
 ```
 
 
+
+
+
+DELETE BELOW (moved to other R file)
+
+
 ```{r}
 # get inputs for heatmetrics WBGT function
 
-year  <- ncvar_get(ds_work, "year")  # dim = 744
-month <- ncvar_get(ds_work, "month") # dim = 744
-dday  <- ncvar_get(ds_work, "dday")  # dim = 744
-lat <- ncvar_get(ds_work, "latitude")  # dim = 96
-lon <- ncvar_get(ds_work, "longitude") # dim = 105
-solar  <- aperm(ncvar_get(ds_work, "solar"), c(3,2,1)) # dim = 744 x 96 x 105 for below variables
+year  <- ncvar_get(wbgt_inputs_aug_2019, "year")  # dim = 744
+month <- ncvar_get(wbgt_inputs_aug_2019, "month") # dim = 744
+dday  <- ncvar_get(wbgt_inputs_aug_2019, "dday")  # dim = 744
+lat <- ncvar_get(wbgt_inputs_aug_2019, "latitude")  # dim = 96
+lon <- ncvar_get(wbgt_inputs_aug_2019, "longitude") # dim = 105
+solar  <- aperm(ncvar_get(wbgt_inputs_aug_2019, "solar"), c(3,2,1)) # dim = 744 x 96 x 105 for below variables
 cza    <- cza_array_ca
-fdir   <- aperm(ncvar_get(ds_work, "fdir"), c(3,2,1))
-pres   <- aperm(ncvar_get(ds_work, "pres"), c(3,2,1))
-Tair   <- aperm(ncvar_get(ds_work, "Tair"), c(3,2,1))
-relhum <- aperm(ncvar_get(ds_work, "relhum"), c(3,2,1))
-speed  <- aperm(ncvar_get(ds_work, "speed"), c(3,2,1))
+fdir   <- aperm(ncvar_get(wbgt_inputs_aug_2019, "fdir"), c(3,2,1))
+pres   <- aperm(ncvar_get(wbgt_inputs_aug_2019, "pres"), c(3,2,1))
+Tair   <- aperm(ncvar_get(wbgt_inputs_aug_2019, "Tair"), c(3,2,1))
+relhum <- aperm(ncvar_get(wbgt_inputs_aug_2019, "relhum"), c(3,2,1))
+speed  <- aperm(ncvar_get(wbgt_inputs_aug_2019, "speed"), c(3,2,1))
 zspeed <- 10
 dT     <- -0.052
-urban  <- aperm(ncvar_get(ds_work, "urban"), c(3,2,1))
+urban  <- aperm(ncvar_get(wbgt_inputs_aug_2019, "urban"), c(3,2,1))
 ```
 
 ```{r}
@@ -397,7 +403,7 @@ writeRaster(r, filename = "wbgt_aug_2019", overwrite = TRUE, format = "CDF")
 ```{r}
 # plot wbgt_out at a single timestep
 
-times <- as.POSIXct(ncvar_get(ds_work, "valid_time"), origin = "1970-01-01", tz = "UTC")
+times <- as.POSIXct(ncvar_get(wbgt_inputs_aug_2019, "valid_time"), origin = "1970-01-01", tz = "UTC")
 t_index <- which(times == as.POSIXct("2019-08-01 18:00", tz="UTC"))
 wbgt_slice <- wbgt_out[t_index,,]
 r <- rast(wbgt_slice)

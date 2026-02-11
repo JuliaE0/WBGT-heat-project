@@ -1,0 +1,417 @@
+---
+title: "calculate_cza"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, results='asis', message=FALSE, warning=FALSE, collapse=TRUE)
+```
+
+```{r}
+library(heatmetrics)
+ls("package:heatmetrics") # functions in the heatmetrics package
+```
+
+Data source:
+
+Muñoz Sabater, J. (2019): ERA5-Land hourly data from 1950 to present. Copernicus Climate Change Service (C3S) Climate Data Store (CDS). DOI: 10.24381/cds.e2161bac (Accessed on 27-01-2026)
+
+Hersbach, H., Bell, B., Berrisford, P., Biavati, G., Horányi, A., Muñoz Sabater, J., Nicolas, J., Peubey, C., Radu, R., Rozum, I., Schepers, D., Simmons, A., Soci, C., Dee, D., Thépaut, J-N. (2023): ERA5 hourly data on single levels from 1940 to present. Copernicus Climate Change Service (C3S) Climate Data Store (CDS), DOI: 10.24381/cds.adbb2d47 (Accessed on 27-01-2026)
+
+```{r}
+library(ncdf4)
+library(terra)
+```
+
+```{r}
+era5land <- nc_open("era5-land_2019.nc") # era5-land
+names(era5land$var)
+
+era5 <- nc_open("era5_2019.nc") # era5
+names(era5$var)
+```
+
+```{r}
+# open and view preprocessed dataset
+wbgt_inputs_aug_2019 <- nc_open("wbgt_inputs_aug_2019.nc")
+names(wbgt_inputs_aug_2019$var)
+dim(ncvar_get(wbgt_inputs_aug_2019, "fdir")) # R shows dimensions as longitude x latitude x time
+```
+
+```{r}
+# get inputs for calc_cza_int
+lat <- ncvar_get(wbgt_inputs_aug_2019, "latitude")
+lon <- ncvar_get(wbgt_inputs_aug_2019, "longitude")
+year  <- ncvar_get(wbgt_inputs_aug_2019, "year")
+month <- ncvar_get(wbgt_inputs_aug_2019, "month")
+day   <- ncvar_get(wbgt_inputs_aug_2019, "day")
+hour  <- ncvar_get(wbgt_inputs_aug_2019, "hour")
+
+# expand to full grid
+grid <- expand.grid(lon = lon, lat = lat, t = seq_along(year))
+grid$y   <- year[grid$t]
+grid$mon <- month[grid$t]
+grid$d   <- day[grid$t]
+grid$hr  <- hour[grid$t]
+
+# call calc_cza_int() ---- takes about 10 minutes
+cza <- calc_cza_int(grid$lat, grid$lon, grid$y, grid$mon, grid$d, grid$hr)
+
+# reshape back to 3-dimensional array
+ntime <- length(year)
+nlat <- length(lat)
+nlon <- length(lon)
+
+cza_array <- array(cza, dim = c(nlon, nlat, ntime))
+```
+
+```{r}
+# check that dimensions of cza_array match dimensions of wbgt_inputs_aug_2019
+dim(ncvar_get(wbgt_inputs_aug_2019, "solar"))
+dim(cza_array)  # longitude x latitude x time
+
+summary(cza_array) # check that all values are in [0,1]
+```
+
+```{r}
+# crop cza_array to California shape
+
+cza_array_for_terra <- aperm(cza_array, c(2,1,3)) # latitude x longitude x time ordering for terra
+r_cza <- rast(cza_array_for_terra) # convert array to raster
+ext(r_cza) <- c(min(lon), max(lon), min(lat), max(lat))
+crs(r_cza) <- "EPSG:4326"
+ca <- vect("ca_state/CA_State.shp")
+ca <- project(ca, crs(r_cza))
+r_cza_ca <- crop(r_cza, ca, snap="out") # crop with whole grid cells on CA boundary
+r_cza_ca <- mask(r_cza_ca, ca)
+
+# convert raster in the shape of CA back to array
+cza_array_ca <- as.array(r_cza_ca)
+cza_array_ca <- aperm(cza_array_ca, c(2,1,3)) # reorder back to longitude x latitude x time
+
+dim(cza_array_ca) # check dimensions of cropped array
+```
+
+```{r}
+# check that cza_array_ca is actually cropped to CA by plotting it
+
+times <- as.POSIXct(ncvar_get(wbgt_inputs_aug_2019, "valid_time"), origin = "1970-01-01", tz = "UTC")
+t_index <- which(times == as.POSIXct("2019-08-01 18:00", tz="UTC"))
+r_cza_ca <- rast(aperm(cza_array_ca, c(2,1,3)))
+ext(r_cza_ca) <- c(min(lon), max(lon), min(lat), max(lat))
+crs(r_cza_ca) <- "EPSG:4326"
+plot(r_cza_ca[[t_index]])
+title(main = paste("cza at", times[t_index]), line=3)
+```
+
+```{r}
+# put cza_array_ca into wbgt_inputs_aug_2019 as a variable -- edited wbgt_inputs_aug_2019 directly
+
+nc_close(wbgt_inputs_aug_2019)
+
+wbgt_inputs_aug_2019 <- nc_open("wbgt_inputs_aug_2019.nc", write = TRUE)
+
+dim_lon  <- wbgt_inputs_aug_2019$dim$longitude
+dim_lat  <- wbgt_inputs_aug_2019$dim$latitude
+dim_time <- wbgt_inputs_aug_2019$dim$valid_time
+
+cza <- ncvar_def(
+  name = "cza",
+  units = "",   # no units because it's a ratio
+  dim = list(dim_lon, dim_lat, dim_time),
+  missval = -9999,
+  longname = "cosine solar zenith angle (0-1)",
+  prec = "float"
+)
+
+wbgt_inputs_aug_2019 <- ncvar_add(wbgt_inputs_aug_2019, cza)
+
+ncvar_put(wbgt_inputs_aug_2019, cza, cza_array_ca)
+
+nc_close(wbgt_inputs_aug_2019)
+```
+
+```{r}
+# check wbgt_inputs_aug_2019
+
+wbgt_inputs_aug_2019 <- nc_open("wbgt_inputs_aug_2019.nc")
+names(wbgt_inputs_aug_2019$var)
+dim(ncvar_get(wbgt_inputs_aug_2019, "fdir")) # R shows dimensions as longitude x latitude x time
+```
+
+```{r}
+# just checking
+# plot with wbgt_inputs_aug_2019 Tair variable at a single valid_time
+
+r <- rast("wbgt_inputs_aug_2019.nc", subds = "Tair")
+time_raw <- ncvar_get(wbgt_inputs_aug_2019, "valid_time")
+time_units <- ncatt_get(wbgt_inputs_aug_2019, "valid_time", "units")$value
+time_vals <- as.POSIXct(time_raw, origin="1970-01-01", tz="UTC")
+time(r) <- time_vals
+t_index <- which(time_vals == as.POSIXct("2019-08-01 18:00", tz="UTC"))
+plot(r[[t_index]])
+title(main = "Tair at 2019-08-01 12:00", line=3)
+```
+
+
+
+
+
+DELETE BELOW (moved to other R file)
+
+
+```{r}
+# get inputs for heatmetrics WBGT function
+
+year  <- ncvar_get(wbgt_inputs_aug_2019, "year")  # dim = 744
+month <- ncvar_get(wbgt_inputs_aug_2019, "month") # dim = 744
+dday  <- ncvar_get(wbgt_inputs_aug_2019, "dday")  # dim = 744
+lat <- ncvar_get(wbgt_inputs_aug_2019, "latitude")  # dim = 96
+lon <- ncvar_get(wbgt_inputs_aug_2019, "longitude") # dim = 105
+solar  <- aperm(ncvar_get(wbgt_inputs_aug_2019, "solar"), c(3,2,1)) # dim = 744 x 96 x 105 for below variables
+cza    <- cza_array_ca
+fdir   <- aperm(ncvar_get(wbgt_inputs_aug_2019, "fdir"), c(3,2,1))
+pres   <- aperm(ncvar_get(wbgt_inputs_aug_2019, "pres"), c(3,2,1))
+Tair   <- aperm(ncvar_get(wbgt_inputs_aug_2019, "Tair"), c(3,2,1))
+relhum <- aperm(ncvar_get(wbgt_inputs_aug_2019, "relhum"), c(3,2,1))
+speed  <- aperm(ncvar_get(wbgt_inputs_aug_2019, "speed"), c(3,2,1))
+zspeed <- 10
+dT     <- -0.052
+urban  <- aperm(ncvar_get(wbgt_inputs_aug_2019, "urban"), c(3,2,1))
+```
+
+```{r}
+# heatmetrics WBGT function accepts scalar inputs
+
+# this worked, so try to expand on this idea
+
+t <- 100
+i <- 50
+j <- 50
+
+wbgt_test <- wbgt(
+  year[t],
+  month[t],
+  dday[t],
+  lat[i],
+  lon[j],
+  solar[t,i,j],
+  cza[t,i,j],
+  fdir[t,i,j],
+  pres[t,i,j],
+  Tair[t,i,j],
+  relhum[t,i,j],
+  speed[t,i,j],
+  zspeed,
+  dT,
+  urban[t,i,j]
+)
+```
+
+```{r}
+# try looping WBGT over variables, 3-dimensional
+# takes forever (didn't actually try running)
+
+valid_mask <-
+  !is.na(solar) &
+  !is.na(cza) &
+  !is.na(fdir) &
+  !is.na(pres) &
+  !is.na(Tair) &
+  !is.na(relhum) &
+  !is.na(speed) &
+  !is.na(urban)
+
+valid_idx <- which(valid_mask, arr.ind = TRUE)
+
+wbgt_out <- array(NA_real_, dim = dim(solar))
+
+
+for (k in seq_len(nrow(valid_idx))) {
+
+  t <- valid_idx[k,1]
+  i <- valid_idx[k,2]
+  j <- valid_idx[k,3]
+
+  wbgt_out[t,i,j] <- wbgt(
+    year[t],
+    month[t],
+    dday[t],
+    lat[i],
+    lon[j],
+    solar[t,i,j],
+    cza[t,i,j],
+    fdir[t,i,j],
+    pres[t,i,j],
+    Tair[t,i,j],
+    relhum[t,i,j],
+    speed[t,i,j],
+    zspeed,
+    dT,
+    urban[t,i,j]
+  )
+}
+
+```
+
+```{r}
+# try to expand input variables into a grid, then running WBGT function over rows
+# takes forever (didn't actualy try running)
+
+valid_mask <-
+  !is.na(solar) &
+  !is.na(cza) &
+  !is.na(fdir) &
+  !is.na(pres) &
+  !is.na(Tair) &
+  !is.na(relhum) &
+  !is.na(speed) &
+  !is.na(urban)
+idx <- which(valid_mask, arr.ind = TRUE) # idx[,1] = time, idx[,2] = latitude,idx[,3] = longitude
+
+input_grid <- data.frame(
+
+  year  = year[idx[,1]],
+  month = month[idx[,1]],
+  dday  = dday[idx[,1]],
+
+  lat = lat[idx[,2]],
+  lon = lon[idx[,3]],
+
+  solar  = solar[idx],
+  cza    = cza[idx],
+  fdir   = fdir[idx],
+  pres   = pres[idx],
+  Tair   = Tair[idx],
+  relhum = relhum[idx],
+  speed  = speed[idx],
+  urban  = urban[idx])
+
+input_grid$zspeed <- zspeed
+input_grid$dT     <- dT
+
+
+
+# run WBGT function on input_grid
+wbgt_out <- mapply(
+  wbgt,
+  year   = input_grid$year,
+  month  = input_grid$month,
+  dday   = input_grid$dday,
+  lat    = input_grid$lat,
+  lon    = input_grid$lon,
+  solar  = input_grid$solar,
+  cza    = input_grid$cza,
+  fdir   = input_grid$fdir,
+  pres   = input_grid$pres,
+  Tair   = input_grid$Tair,
+  relhum = input_grid$relhum,
+  speed  = input_grid$speed,
+  zspeed = input_grid$zspeed,
+  dT     = input_grid$dT,
+  urban  = input_grid$urban)
+```
+
+```{r}
+# try with parallel processing, might be faster
+# took about 20 minutes
+
+library(parallel)
+
+grid_lat <- rep(lat, each = length(lon))
+grid_lon <- rep(lon, times = length(lat))
+
+wbgt_out <- array(NA_real_, dim = dim(solar))
+
+wbgt_time_worker <- function(t) {
+
+  solar_v  <- as.vector(solar[t,,])
+  cza_v    <- as.vector(cza[t,,])
+  fdir_v   <- as.vector(fdir[t,,])
+  pres_v   <- as.vector(pres[t,,])
+  Tair_v   <- as.vector(Tair[t,,])
+  relhum_v <- as.vector(relhum[t,,])
+  speed_v  <- as.vector(speed[t,,])
+  urban_v  <- as.vector(urban[t,,])
+
+  valid <- !is.na(solar_v) &
+           !is.na(cza_v) &
+           !is.na(fdir_v) &
+           !is.na(pres_v) &
+           !is.na(Tair_v) &
+           !is.na(relhum_v) &
+           !is.na(speed_v) &
+           !is.na(urban_v)
+
+  out <- rep(NA_real_, length(solar_v))
+
+  if (any(valid)) {
+    out[valid] <- mapply(
+      wbgt,
+      year[t],
+      month[t],
+      dday[t],
+      grid_lat[valid],
+      grid_lon[valid],
+      solar_v[valid],
+      cza_v[valid],
+      fdir_v[valid],
+      pres_v[valid],
+      Tair_v[valid],
+      relhum_v[valid],
+      speed_v[valid],
+      MoreArgs = list(zspeed = zspeed, dT = dT),
+      urban_v[valid]
+    )
+  }
+  matrix(out, nrow = length(lat), ncol = length(lon))
+}
+
+cl <- makeCluster(detectCores() - 1)
+
+clusterExport(cl, c(
+  "wbgt","solar","cza","fdir","pres",
+  "Tair","relhum","speed","urban",
+  "year","month","dday",
+  "lat","lon",
+  "grid_lat","grid_lon",
+  "zspeed","dT"
+))
+
+wbgt_list <- parLapply(cl, 1:dim(solar)[1], wbgt_time_worker)
+
+stopCluster(cl)
+
+for (t in seq_along(wbgt_list)) {
+  wbgt_out[t,,] <- wbgt_list[[t]]
+}
+
+```
+
+```{r}
+summary(wbgt_out)  # NA's are just the grid cells outside the shape of California
+dim(wbgt_out)
+```
+
+```{r}
+# save wbgt_out as netCDF file -- TO DO, DIDN'T ACTUALLY RUN YET
+writeRaster(r, filename = "wbgt_aug_2019", overwrite = TRUE, format = "CDF")
+
+```
+
+
+```{r}
+# plot wbgt_out at a single timestep
+
+times <- as.POSIXct(ncvar_get(wbgt_inputs_aug_2019, "valid_time"), origin = "1970-01-01", tz = "UTC")
+t_index <- which(times == as.POSIXct("2019-08-01 18:00", tz="UTC"))
+wbgt_slice <- wbgt_out[t_index,,]
+r <- rast(wbgt_slice)
+ext(r) <- c(min(lon), max(lon), min(lat), max(lat))
+crs(r) <- "EPSG:4326"
+if (lat[1] > lat[length(lat)]) r <- flip(r, "vertical")
+plot(r)
+title(main = paste("WBGT at", times[t_index]), line=3)
+```
+
+

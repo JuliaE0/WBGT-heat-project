@@ -170,9 +170,38 @@ title(main = paste("WBGT at", times[t_index]), line=3)
 
 ```{r}
 # save wbgt_out as netCDF file -- TO DO, DIDN'T ACTUALLY RUN YET
-writeRaster(wbgt_out, filename = "wbgt_aug_2019", overwrite = TRUE, format = "CDF")
 
+wbgt_out <- aperm(wbgt_out, c(3, 2, 1))
 
+lon_dim  <- wbgt_inputs_aug_2019$dim$longitude
+lat_dim  <- wbgt_inputs_aug_2019$dim$latitude
+time_dim <- wbgt_inputs_aug_2019$dim$valid_time
+
+#lon_dim  <- ncdim_def("longitude",  "degrees_east",  lon)
+#lat_dim  <- ncdim_def("latitude",  "degrees_north", lat)
+#time_dim <- ncdim_def("valid_time", "seconds since 1970-01-01", time)
+
+wbgt <- ncvar_def(
+  name = "wbgt",
+  units = "degrees_Celsius",
+  dim = list(lon_dim, lat_dim, time_dim),
+  missval = -9999,
+  longname = "Wet-bulb globe temperature",
+  prec = "float"
+)
+
+ncfile <- nc_create("wbgt_aug_2019.nc", vars = wbgt)
+
+ncvar_put(ncfile, wbgt, wbgt_out)
+
+nc_close(ncfile)
 ```
 
+```{r}
+# open wbgt_aug_2019.nc to check
+
+wbgt_aug_2019 <- nc_open("wbgt_aug_2019.nc")
+names(wbgt_aug_2019$var)
+dim(ncvar_get(wbgt_aug_2019, "wbgt")) # R shows dimensions as longitude x latitude x time
+```
 

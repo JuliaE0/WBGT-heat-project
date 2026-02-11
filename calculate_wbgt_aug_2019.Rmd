@@ -1,0 +1,281 @@
+---
+title: "wbgt_aug_2019"
+output: html_document
+date: "2026-02-11"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r cars}
+library(heatmetrics)
+ls("package:heatmetrics") # functions in the heatmetrics package
+```
+
+```{r pressure, echo=FALSE}
+library(ncdf4)
+library(terra)
+library(parallel)
+```
+
+```{r}
+# open netCDF file of preprocessed input variables
+wbgt_inputs <- nc_open("wbgt_inputs.nc")
+names(wbgt_inputs$var)
+dim(ncvar_get(wbgt_inputs, "fdir")) # view dims, R shows dimensions as longitude x latitude x time
+```
+
+```{r}
+# get inputs for heatmetrics WBGT function
+
+year  <- ncvar_get(wbgt_inputs, "year")  # dim = 744
+month <- ncvar_get(wbgt_inputs, "month") # dim = 744
+dday  <- ncvar_get(wbgt_inputs, "dday")  # dim = 744
+lat <- ncvar_get(wbgt_inputs, "latitude")  # dim = 96
+lon <- ncvar_get(wbgt_inputs, "longitude") # dim = 105
+solar  <- aperm(ncvar_get(wbgt_inputs, "solar"), c(3,2,1)) # dim = 744 x 96 x 105 for below variables
+cza    <- aperm(ncvar_get(wbgt_inputs, "cza"), c(3,2,1))
+fdir   <- aperm(ncvar_get(wbgt_inputs, "fdir"), c(3,2,1))
+pres   <- aperm(ncvar_get(wbgt_inputs, "pres"), c(3,2,1))
+Tair   <- aperm(ncvar_get(wbgt_inputs, "Tair"), c(3,2,1))
+relhum <- aperm(ncvar_get(wbgt_inputs, "relhum"), c(3,2,1))
+speed  <- aperm(ncvar_get(wbgt_inputs, "speed"), c(3,2,1))
+zspeed <- 10
+dT     <- -0.052
+urban  <- aperm(ncvar_get(wbgt_inputs, "urban"), c(3,2,1))
+```
+
+```{r}
+# heatmetrics WBGT function accepts scalar inputs
+
+# this worked, so try to expand on this idea
+
+t <- 100
+i <- 50
+j <- 50
+
+wbgt_test <- wbgt(
+  year[t],
+  month[t],
+  dday[t],
+  lat[i],
+  lon[j],
+  solar[t,i,j],
+  cza[t,i,j],
+  fdir[t,i,j],
+  pres[t,i,j],
+  Tair[t,i,j],
+  relhum[t,i,j],
+  speed[t,i,j],
+  zspeed,
+  dT,
+  urban[t,i,j]
+)
+```
+
+```{r}
+# try looping WBGT over variables, 3-dimensional
+# takes forever (didn't actually try running)
+
+valid_mask <-
+  !is.na(solar) &
+  !is.na(cza) &
+  !is.na(fdir) &
+  !is.na(pres) &
+  !is.na(Tair) &
+  !is.na(relhum) &
+  !is.na(speed) &
+  !is.na(urban)
+
+valid_idx <- which(valid_mask, arr.ind = TRUE)
+
+wbgt_out <- array(NA_real_, dim = dim(solar))
+
+
+for (k in seq_len(nrow(valid_idx))) {
+
+  t <- valid_idx[k,1]
+  i <- valid_idx[k,2]
+  j <- valid_idx[k,3]
+
+  wbgt_out[t,i,j] <- wbgt(
+    year[t],
+    month[t],
+    dday[t],
+    lat[i],
+    lon[j],
+    solar[t,i,j],
+    cza[t,i,j],
+    fdir[t,i,j],
+    pres[t,i,j],
+    Tair[t,i,j],
+    relhum[t,i,j],
+    speed[t,i,j],
+    zspeed,
+    dT,
+    urban[t,i,j]
+  )
+}
+
+```
+
+```{r}
+# try to expand input variables into a grid, then running WBGT function over rows
+# takes forever (didn't actualy try running)
+
+valid_mask <-
+  !is.na(solar) &
+  !is.na(cza) &
+  !is.na(fdir) &
+  !is.na(pres) &
+  !is.na(Tair) &
+  !is.na(relhum) &
+  !is.na(speed) &
+  !is.na(urban)
+idx <- which(valid_mask, arr.ind = TRUE) # idx[,1] = time, idx[,2] = latitude,idx[,3] = longitude
+
+input_grid <- data.frame(
+
+  year  = year[idx[,1]],
+  month = month[idx[,1]],
+  dday  = dday[idx[,1]],
+
+  lat = lat[idx[,2]],
+  lon = lon[idx[,3]],
+
+  solar  = solar[idx],
+  cza    = cza[idx],
+  fdir   = fdir[idx],
+  pres   = pres[idx],
+  Tair   = Tair[idx],
+  relhum = relhum[idx],
+  speed  = speed[idx],
+  urban  = urban[idx])
+
+input_grid$zspeed <- zspeed
+input_grid$dT     <- dT
+
+
+
+# run WBGT function on input_grid
+wbgt_out <- mapply(
+  wbgt,
+  year   = input_grid$year,
+  month  = input_grid$month,
+  dday   = input_grid$dday,
+  lat    = input_grid$lat,
+  lon    = input_grid$lon,
+  solar  = input_grid$solar,
+  cza    = input_grid$cza,
+  fdir   = input_grid$fdir,
+  pres   = input_grid$pres,
+  Tair   = input_grid$Tair,
+  relhum = input_grid$relhum,
+  speed  = input_grid$speed,
+  zspeed = input_grid$zspeed,
+  dT     = input_grid$dT,
+  urban  = input_grid$urban)
+```
+
+```{r}
+# try with parallel processing, might be faster
+# took about 20 minutes
+
+grid_lat <- rep(lat, each = length(lon))
+grid_lon <- rep(lon, times = length(lat))
+
+wbgt_out <- array(NA_real_, dim = dim(solar))
+
+wbgt_time_worker <- function(t) {
+
+  solar_v  <- as.vector(solar[t,,])
+  cza_v    <- as.vector(cza[t,,])
+  fdir_v   <- as.vector(fdir[t,,])
+  pres_v   <- as.vector(pres[t,,])
+  Tair_v   <- as.vector(Tair[t,,])
+  relhum_v <- as.vector(relhum[t,,])
+  speed_v  <- as.vector(speed[t,,])
+  urban_v  <- as.vector(urban[t,,])
+
+  valid <- !is.na(solar_v) &
+           !is.na(cza_v) &
+           !is.na(fdir_v) &
+           !is.na(pres_v) &
+           !is.na(Tair_v) &
+           !is.na(relhum_v) &
+           !is.na(speed_v) &
+           !is.na(urban_v)
+
+  out <- rep(NA_real_, length(solar_v))
+
+  if (any(valid)) {
+    out[valid] <- mapply(
+      wbgt,
+      year[t],
+      month[t],
+      dday[t],
+      grid_lat[valid],
+      grid_lon[valid],
+      solar_v[valid],
+      cza_v[valid],
+      fdir_v[valid],
+      pres_v[valid],
+      Tair_v[valid],
+      relhum_v[valid],
+      speed_v[valid],
+      MoreArgs = list(zspeed = zspeed, dT = dT),
+      urban_v[valid]
+    )
+  }
+  matrix(out, nrow = length(lat), ncol = length(lon))
+}
+
+cl <- makeCluster(detectCores() - 1)
+
+clusterExport(cl, c(
+  "wbgt","solar","cza","fdir","pres",
+  "Tair","relhum","speed","urban",
+  "year","month","dday",
+  "lat","lon",
+  "grid_lat","grid_lon",
+  "zspeed","dT"
+))
+
+wbgt_list <- parLapply(cl, 1:dim(solar)[1], wbgt_time_worker)
+
+stopCluster(cl)
+
+for (t in seq_along(wbgt_list)) {
+  wbgt_out[t,,] <- wbgt_list[[t]]
+}
+
+```
+
+```{r}
+summary(wbgt_out)  # NA's are just the grid cells outside the shape of California
+dim(wbgt_out)
+```
+
+```{r}
+# plot wbgt_out at a single timestep
+
+times <- as.POSIXct(ncvar_get(wbgt_inputs, "valid_time"), origin = "1970-01-01", tz = "UTC")
+t_index <- which(times == as.POSIXct("2019-08-01 18:00", tz="UTC"))
+wbgt_slice <- wbgt_out[t_index,,]
+r <- rast(wbgt_slice)
+ext(r) <- c(min(lon), max(lon), min(lat), max(lat))
+crs(r) <- "EPSG:4326"
+if (lat[1] > lat[length(lat)]) r <- flip(r, "vertical")
+plot(r)
+title(main = paste("WBGT at", times[t_index]), line=3)
+```
+
+```{r}
+# save wbgt_out as netCDF file -- TO DO, DIDN'T ACTUALLY RUN YET
+writeRaster(r, filename = "wbgt_aug_2019", overwrite = TRUE, format = "CDF")
+
+```
+
+

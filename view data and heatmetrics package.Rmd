@@ -48,7 +48,7 @@ day   <- ncvar_get(ds_work, "day")
 hour  <- ncvar_get(ds_work, "hour")
 
 # expand to full grid
-grid <- expand.grid(t = seq_along(year), lat = lat, lon = lon)
+grid <- expand.grid(lon = lon, lat = lat, t = seq_along(year))
 grid$y   <- year[grid$t]
 grid$mon <- month[grid$t]
 grid$d   <- day[grid$t]
@@ -62,20 +62,21 @@ ntime <- length(year)
 nlat <- length(lat)
 nlon <- length(lon)
 
-cza_array <- array(cza, dim = c(ntime, nlat, nlon))
+cza_array <- array(cza, dim = c(nlon, nlat, ntime))
 ```
 
 ```{r}
-# check structure of cza_array
+# check that dimensions of cza_array match dimensions of ds_work
+dim(ncvar_get(ds_work, "solar"))
+dim(cza_array)  # longitude x latitude x time
 
-dim(cza_array)  # should be time=744, latitude=96, longitude=105
 summary(cza_array) # check that all values are in [0,1]
 ```
 
 ```{r}
 # crop cza_array to California shape
 
-cza_array_for_terra <- aperm(cza_array, c(2,3,1)) # latitude x longitude x time ordering for terra
+cza_array_for_terra <- aperm(cza_array, c(2,1,3)) # latitude x longitude x time ordering for terra
 r_cza <- rast(cza_array_for_terra) # convert array to raster
 ext(r_cza) <- c(min(lon), max(lon), min(lat), max(lat))
 crs(r_cza) <- "EPSG:4326"
@@ -86,13 +87,9 @@ r_cza_ca <- mask(r_cza_ca, ca)
 
 # convert raster in the shape of CA back to array
 cza_array_ca <- as.array(r_cza_ca)
-cza_array_ca <- aperm(cza_array_ca, c(3,1,2)) # reorder back to time x latitude x longitude
+cza_array_ca <- aperm(cza_array_ca, c(2,1,3)) # reorder back to longitude x latitude x time
 
 dim(cza_array_ca) # check dimensions of cropped array
-
-#plot_time <- as.POSIXct(ncvar_get(ds_work, "valid_time")[20], origin = "1970-01-01", tz = "UTC")
-#plot(r_cza_ca[[20]])  # TO DO: plot using the cropped array
-#title(main = paste("cza at", plot_time), line=3)
 ```
 
 ```{r}
@@ -100,7 +97,7 @@ dim(cza_array_ca) # check dimensions of cropped array
 
 times <- as.POSIXct(ncvar_get(ds_work, "valid_time"), origin = "1970-01-01", tz = "UTC")
 t_index <- which(times == as.POSIXct("2019-08-01 18:00", tz="UTC"))
-r_cza_ca <- rast(aperm(cza_array_ca, c(2,3,1)))
+r_cza_ca <- rast(aperm(cza_array_ca, c(2,1,3)))
 ext(r_cza_ca) <- c(min(lon), max(lon), min(lat), max(lat))
 crs(r_cza_ca) <- "EPSG:4326"
 plot(r_cza_ca[[t_index]])
@@ -108,22 +105,54 @@ title(main = paste("cza at", times[t_index]), line=3)
 ```
 
 ```{r}
-# just checking
-# plot with ds_work solar variable at a single valid_time
+# put cza_array_ca into ds_work as a variable -- edited ds_work directly
 
-r <- rast("ds_work.nc", subds = "solar")
+nc_close(ds_work)
+
+ds_work <- nc_open("ds_work.nc", write = TRUE)
+
+dim_lon  <- ds_work$dim$longitude
+dim_lat  <- ds_work$dim$latitude
+dim_time <- ds_work$dim$valid_time
+
+cza <- ncvar_def(
+  name = "cza",
+  units = "",   # no units because it's a ratio
+  dim = list(dim_lon, dim_lat, dim_time),
+  missval = -9999,
+  longname = "cosine solar zenith angle (0-1)",
+  prec = "float"
+)
+
+ds_work <- ncvar_add(ds_work, cza)
+
+ncvar_put(ds_work, cza, cza_array_ca)
+
+nc_close(ds_work)
+```
+
+```{r}
+# check ds_work
+
+ds_work <- nc_open("ds_work.nc")
+names(ds_work$var)
+dim(ncvar_get(ds_work, "fdir")) # view dimensions, R shows dimensions as longitude x latitude x time
+```
+
+```{r}
+# just checking
+# plot with ds_work Tair variable at a single valid_time
+
+r <- rast("ds_work.nc", subds = "Tair")
 time_raw <- ncvar_get(ds_work, "valid_time")
 time_units <- ncatt_get(ds_work, "valid_time", "units")$value
 time_vals <- as.POSIXct(time_raw, origin="1970-01-01", tz="UTC")
 time(r) <- time_vals
-t_index <- which(time_vals == as.POSIXct("2019-08-01 12:00", tz="UTC"))
+t_index <- which(time_vals == as.POSIXct("2019-08-01 18:00", tz="UTC"))
 plot(r[[t_index]])
-title(main = "solar at 2019-08-01 12:00", line=3)
+title(main = "Tair at 2019-08-01 12:00", line=3)
 ```
 
-```{r}
-# possibly put cza_array_ca into ds_work as a variable
-```
 
 ```{r}
 # get inputs for heatmetrics WBGT function
@@ -356,6 +385,12 @@ for (t in seq_along(wbgt_list)) {
 ```{r}
 summary(wbgt_out)  # NA's are just the grid cells outside the shape of California
 dim(wbgt_out)
+```
+
+```{r}
+# save wbgt_out as netCDF file -- TO DO, DIDN'T ACTUALLY RUN YET
+writeRaster(r, filename = "wbgt_aug_2019", overwrite = TRUE, format = "CDF")
+
 ```
 
 

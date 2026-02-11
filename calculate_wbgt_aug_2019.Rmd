@@ -14,7 +14,7 @@ library(heatmetrics)
 ls("package:heatmetrics") # functions in the heatmetrics package
 ```
 
-```{r pressure, echo=FALSE}
+```{r}
 library(ncdf4)
 library(terra)
 library(parallel)

@@ -1,0 +1,83 @@
+---
+title: "correlation with wbgt"
+output: html_document
+date: "2026-02-11"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ncdf4)
+library(terra)
+library(parallel)
+```
+
+```{r}
+# open wbgt_aug_2019.nc
+wbgt_aug_2019 <- nc_open("wbgt_aug_2019.nc")
+names(wbgt_aug_2019$var)
+dim(ncvar_get(wbgt_aug_2019, "wbgt")) # R shows dimensions as longitude x latitude x time
+```
+
+```{r}
+# open wbgt_inputs_aug_2019.nc
+wbgt_inputs_aug_2019 <- nc_open("wbgt_inputs_aug_2019.nc")
+names(wbgt_inputs_aug_2019$var)
+dim(ncvar_get(wbgt_inputs_aug_2019, "fdir")) # R shows dimensions as longitude x latitude x time
+```
+
+```{r}
+# plot with wet-bulb globe temp at a single valid_time
+times <- as.POSIXct(ncvar_get(wbgt_aug_2019, "valid_time"), origin = "1970-01-01", tz = "UTC")
+t_index <- which(times == as.POSIXct("2019-08-01 18:00", tz="UTC"))
+r <- rast("wbgt_aug_2019.nc", subds = "wbgt")
+plot(r[[t_index]])
+title(main = paste("wbgt at", times[t_index]), line=3)
+
+# plot dry-bulb air temperature at a single valid_time
+times <- as.POSIXct(ncvar_get(wbgt_inputs_aug_2019, "valid_time"), origin = "1970-01-01", tz = "UTC")
+t_index <- which(times == as.POSIXct("2019-08-01 18:00", tz="UTC"))
+r <- rast("wbgt_inputs_aug_2019.nc", subds = "Tair")
+plot(r[[t_index]])
+title(main = paste("dry-bulb air temp at", times[t_index]), line=3)
+```
+
+```{r}
+# overall correlation
+
+wbgt <- ncvar_get(wbgt_aug_2019, "wbgt")
+atemp <- ncvar_get(wbgt_inputs_aug_2019, "Tair")
+
+dim(wbgt)
+dim(atemp)  # dimensions are longitude x latitude x time
+
+cor(as.vector(wbgt), as.vector(atemp), use = "complete.obs")
+```
+
+```{r}
+# per-location correlation over time
+nlon  <- dim(atemp)[1]
+nlat  <- dim(atemp)[2]
+ntime <- dim(atemp)[3]
+
+
+cor_map <- matrix(NA_real_, nlat, nlon)
+
+for(i in 1:nlon){
+  for(j in 1:nlat){
+
+    cor_map[i,j] <- cor(
+      atemp[i,j,],
+      wbgt[i,j,],
+      use = "complete.obs"
+    )
+  }
+}
+
+image(cor_map, main = "Dry-bulb air temp vs WBGT correlation")
+
+```
+
+

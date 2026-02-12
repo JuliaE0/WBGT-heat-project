@@ -58,25 +58,31 @@ cor(as.vector(wbgt), as.vector(atemp), use = "complete.obs")
 
 ```{r}
 # per-location correlation over time
+
 nlon  <- dim(atemp)[1]
 nlat  <- dim(atemp)[2]
 ntime <- dim(atemp)[3]
 
+atemp_mat <- matrix(aperm(atemp, c(3,1,2)), nrow = ntime)
+wbgt_mat <- matrix(aperm(wbgt, c(3,1,2)), nrow = ntime)
 
-cor_map <- matrix(NA_real_, nlat, nlon)
+cor_vals <- sapply(
+  1:ncol(atemp_mat),
+  function(k)
+    cor(atemp_mat[,k],
+        wbgt_mat[,k],
+        use = "complete.obs")
+)
 
-for(i in 1:nlon){
-  for(j in 1:nlat){
+cor_map <- array(cor_vals, dim = c(nlon, nlat))
 
-    cor_map[i,j] <- cor(
-      atemp[i,j,],
-      wbgt[i,j,],
-      use = "complete.obs"
-    )
-  }
-}
 
-image(cor_map, main = "Dry-bulb air temp vs WBGT correlation")
+r_cor <- rast(t(cor_map))
+ext(r_cor) <- c(min(lon), max(lon), min(lat), max(lat))
+crs(r_cor) <- "EPSG:4326"
+
+plot(r_cor)
+
 
 ```
 

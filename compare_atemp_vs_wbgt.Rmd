@@ -69,20 +69,58 @@ cor_time <- sapply(
         as.vector(wbgt[,,t]),
         use="complete.obs"))
 
-# time series
+time_seq <- seq(as.POSIXct("2019-08-01 00:00", tz="UTC"), by = "hour", length.out = ntime)
+
+# correlation during daytime higher than during nighttime
+hours <- as.integer(format(time_seq, "%H"))
+day_cor   <- cor_time[hours >= 13 & hours <= 23]
+night_cor <- cor_time[hours <= 13]
+print(paste("daytime (hr 13-23) correlation:", mean(day_cor)))
+print(paste("nighttime (hr 0-13) correlation", mean(night_cor)))
+
+# time series over entire Aug 2019, hourly
+par(mar = c(5, 5, 1, 0)) 
 plot(cor_time, type="l",
-     ylab="Spatial correlation",
+     ylab="Spatial correlation \n bewteen dry-bulb air temp and WBGT",
      xlab="Time index")
+
+# time series over one week
+start_time <- as.POSIXct("2019-08-01 00:00", tz="UTC")
+end_time   <- start_time + 168*3600
+idx <- which(time_seq >= start_time & time_seq < end_time)
+par(mar = c(5, 5, 1, 0)) 
+plot(time_seq[idx],
+     cor_time[idx],
+     type="l",
+     ylab="Spatial correlation \n bewteen dry-bulb air temp and WBGT",
+     xlab="Date")
+
+# time series over two days
+start_time <- as.POSIXct("2019-08-01 00:00", tz="UTC")
+end_time   <- start_time + 48*3600
+idx <- which(time_seq >= start_time & time_seq < end_time)
+par(mar = c(5, 5, 1, 0)) 
+plot(time_seq[idx],
+     cor_time[idx],
+     type="l",
+     ylab="Spatial correlation \n bewteen dry-bulb air temp and WBGT",
+     xlab="Date")
+
+# mean correlation over a day
+hour_all <- as.integer(format(time_seq, "%H"))
+
+mean_by_hour <- tapply(cor_time, hour_all, mean, na.rm=TRUE)
+
+plot(0:23, mean_by_hour, type="l",
+     xlab="Hour of day",
+     ylab="Mean spatial correlation")
 ```
-Time series shows how the spatial relationship between atemp and wbgt evolves through time.
+These time series shows how the spatial relationship between dry-bulb air temp and wbgt changes over time.
 
-look into this:
-daytime → lower correlation (solar & humidity effects)
-nighttime → higher correlation (temp dominates)
-
+WBGT spatial patterns follow dry-bulb air temperature more strongly during daytime (higher correlation) and diverge more at night (lower correlation). 
 
 ```{r}
-# correlation across time at each grid cell -- FIGURE OUT ERROR
+# correlation across time at each grid cell
 
 nlon  <- dim(atemp)[1]
 nlat  <- dim(atemp)[2]
@@ -91,17 +129,11 @@ ntime <- dim(atemp)[3]
 atemp_mat <- matrix(aperm(atemp, c(3,1,2)), nrow = ntime)
 wbgt_mat <- matrix(aperm(wbgt, c(3,1,2)), nrow = ntime)
 
-safe_cor <- function(x, y) {
-  ok <- complete.cases(x, y)
-  if (sum(ok) < 2) return(NA_real_)
-  cor(x[ok], y[ok])}
-
 cor_vals <- sapply(
   1:ncol(atemp_mat),
   function(k)
     cor(atemp_mat[,k],
-        wbgt_mat[,k],
-        use = "complete.obs"))
+        wbgt_mat[,k]))
 
 cor_map <- array(cor_vals, dim = c(nlon, nlat))
 
@@ -109,7 +141,17 @@ r_cor <- rast(t(cor_map))
 ext(r_cor) <- c(min(lon), max(lon), min(lat), max(lat))
 crs(r_cor) <- "EPSG:4326"
 
-plot(r_cor)
-```
 
+plot(r_cor, main = "Temporal Correlation Between Air Temperature and WBGT \n (August 2019)",
+     cex.main=0.9)
+usr <- par("usr")
+text(
+  x = usr[2],                     # just right of legend
+  y = mean(usr[3:4]),
+  labels = "Pearson correlation coefficient",
+  srt = 90,
+  xpd = NA,
+  cex = 0.9)
+```
+The color of each grid cell represents the temporal Pearson correlation between dry-bulb air temp and WBGT across hourly timesteps in August 2019. High correlation seems to be seen inland and in the hotter regions of California. Lower correlation is seen on the coast and mountains.
 

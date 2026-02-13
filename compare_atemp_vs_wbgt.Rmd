@@ -146,7 +146,7 @@ plot(r_cor, main = "Temporal Correlation Between Air Temperature and WBGT \n (Au
      cex.main=0.9)
 usr <- par("usr")
 text(
-  x = usr[2],                     # just right of legend
+  x = usr[2],
   y = mean(usr[3:4]),
   labels = "Pearson correlation coefficient",
   srt = 90,

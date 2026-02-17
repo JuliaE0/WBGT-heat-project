@@ -1,0 +1,30 @@
+---
+title: "compare_wbgt_with_heatmetrics"
+output: html_document
+date: "2026-02-17"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ncdf4)
+library(terra)
+
+```
+
+```{r}
+# load heatmetrics data (from Spangler et al.)
+heatvars <- readRDS("UNWEIGHTED_Heatvars_County_2000-2020_v1.2.Rds")
+
+# load wbgt
+wbgt_aug_2019 <- nc_open("wbgt_aug_2019.nc")
+
+```
+
+```{r}
+# plot heatmetrics WBGTmin_C, WBGTmax_C, WBGTmean_C variables
+
+```
+

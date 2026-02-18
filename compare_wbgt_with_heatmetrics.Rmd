@@ -9,22 +9,56 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r}
+library(dplyr)
 library(ncdf4)
 library(terra)
-
 ```
 
 ```{r}
 # load heatmetrics data (from Spangler et al.)
 heatvars <- readRDS("UNWEIGHTED_Heatvars_County_2000-2020_v1.2.Rds")
 
-# load wbgt
-wbgt_aug_2019 <- nc_open("wbgt_aug_2019.nc")
+# select August 2019 from heatmetrics data
+heatvars_aug_2019 <- subset(heatvars, Date >= "2019-08-01" & Date <= "2019-08-31")
 
+# load wbgt_aug_2019
+wbgt_aug_2019 <- nc_open("wbgt_aug_2019.nc")
 ```
 
 ```{r}
-# plot heatmetrics WBGTmin_C, WBGTmax_C, WBGTmean_C variables
+# plot heatmetrics WBGTmin_C, WBGTmax_C, WBGTmean_C variables for a date in August 2019
 
+heatvars_aug_1_2019 <- subset(heatvars, Date == "2019-08-01")
+
+library(tigris)
+library(sf)
+
+counties_sf <- counties(cb = TRUE, year = 2020) %>%  st_as_sf()
+map_data <- counties_sf %>% left_join(heatvars_aug_1_2019, by = c("GEOID" = "StCoFIPS"))
+ca_map <- map_data %>% filter(STATEFP == "06")  # plot only California
+
+library(ggplot2)
+
+ggplot(ca_map) + geom_sf(aes(fill = WBGTmin_C), color = NA) + 
+  scale_fill_viridis_c(name = "minimum WBGT (C)") + theme_minimal() +
+  labs(title = "Minimum WBGT by County", subtitle = "August 1, 2019")
+
+ggplot(ca_map) + geom_sf(aes(fill = WBGTmax_C), color = NA) + 
+  scale_fill_viridis_c(name = "maximum WBGT (C)") + theme_minimal() +
+  labs(title = "Maximum WBGT by County", subtitle = "August 1, 2019")
+
+ggplot(ca_map) + geom_sf(aes(fill = WBGTmean_C), color = NA) + 
+  scale_fill_viridis_c(name = "mean WBGT (C)") + theme_minimal() +
+  labs(title = "Mean WBGT by County", subtitle = "August 1, 2019")
+```
+
+```{r}
+times <- as.POSIXct(ncvar_get(wbgt_aug_2019, "valid_time"), origin = "1970-01-01", tz = "UTC")
+t_index <- which(times == as.POSIXct("2019-08-01 18:00", tz="UTC"))
+
+# plot of wet-bulb globe temp at a single valid_time
+r <- rast("wbgt_aug_2019.nc", subds = "wbgt")
+plot(r[[t_index]])
+title(main = paste("wbgt at", times[t_index]), line=3)
 ```
 

@@ -87,7 +87,9 @@ def main():
     files = sorted(INPUT_DIR.glob("era5_land_*.nc"))
 
     for file in files:
-        output_file = OUTPUT_DIR/file.name   # TO DO: set names of output files to be wbgt_inputs_{year}_{month}.nc
+        year = file.stem.split("_")[2]
+        month = file.stem.split("_")[3]
+        output_file = OUTPUT_DIR/f"wbgt_inputs_{year}_{month}.nc"
 
         if output_file.exists():
             print(f"Skipping existing: {output_file.name}")

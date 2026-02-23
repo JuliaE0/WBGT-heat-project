@@ -7,48 +7,103 @@ import xarray as xr
 import numpy as np
 import geopandas as gpd
 import regionmask
+from pathlib import Path
 
-# create folder to hold new preprocessed files
-out_dir = Path("era5_land_preprocessed")
-out_dir.mkdir(parents=True, exist_ok=True)
+# set directory and create folder to hold new preprocessed files
+INPUT_DIR = Path("era5_land_data")
+OUTPUT_DIR = Path("era5_land_preprocessed")
+OUTPUT_DIR.mkdir(parents=TRUE, exist_ok=True)
 
-# loop over monthly files in era5_land_data folder
-IN_DIR = "/Users/new account/Desktop/WBGT-heat-project/WBGT 2000-2025/era5_land_data"
+def preprocess_dataset(ds):
+    """
+    preprocess ERA5-Land variables
+    """
 
-# CONTINUE HERE
+    # convert t2m from K to Celsius -- used as "Tair" input
+    ds["Tair"] = ds["t2m"] - 273.15
+    ds["Tair"].attrs["units"] = "C"
 
-# convert t2m from K to Celsius -- used as "Tair" input
-t2m_c = era5land["t2m"] - 273.15
-t2m_c.attrs["units"] = "C"
+    # convert d2m from K to Celsius -- used in "relhum" calculation
+    ds["d2m_c"] = ds["d2m"] - 273.15
+    ds["d2m_c"].attrs["units"] = "C"
 
-# convert d2m from K to Celsius -- used in "relhum" calculation
-d2m_c = era5land["d2m"] - 273.15
-d2m_c.attrs["units"] = "C"
+    # convert ssrd from J/m2 to W/m2 -- used as "solar" input
+    ds["solar"] = ds["ssrd"] / 3600    # dividy by 3600 seconds since hourly accumulated
+    ds["solar"].attrs["units"] = "W m**-2"
 
-# convert ssrd from J/m2 to W/m2 -- used as "solar" input
-era5land["ssrd"].valid_time.diff("time") # check that time resolution is hourly
-ssrd_W = era5land["ssrd"] / 3600         # dividy by 3600 seconds since hourly accumulated
-ssrd_W.attrs["units"] = "W m**-2"
+    # convert sp from Pa to hPa -- used as "pres" input
+    ds["pres"] = ds["sp"] / 100
+    ds["pres"].attrs["units"] = "hPa"
+    
+    # calculate relative humidity (%) -- used as "relhum" input
+    vapor_pres = 610.94*np.exp(17.625*ds["d2m_c"] / (243.04+ds["d2m_c"]))
+    sat_vapor_pres = 610.94*np.exp(17.625*ds["Tair"] / (243.04+ds["Tair"]))
+    ds["relhum"] = 100*(vapor_pres/sat_vapor_pres)
+    ds["relhum"].attrs["long_name"] = "relative humidity (%)"
+    ds["relhum"].attrs["units"] = "%"
 
-# convert sp from Pa to hPa -- used as "pres" input
-sp_hpa = era5land["sp"] / 100
-sp_hpa.attrs["units"] = "hPa"
+    # calculate wind speed (m/s) -- used as "speed" input
+    u = ds["u10"]
+    v = ds["v10"]
+    ds["speed"] = np.sqrt(u**2 + v**2)
+    ds["speed"].attrs["long_name"] = "wind speed (m/s)"
+    ds["speed"].attrs["units"] = "m s**-1"
 
-# calculate relative humidity (%) -- used as "relhum" input
-vapor_pres = 610.94*np.exp(17.625*d2m_c / (243.04+d2m_c))
-sat_vapor_pres = 610.94*np.exp(17.625*t2m_c / (243.04+t2m_c))
-rh = 100*(vapor_pres/sat_vapor_pres)
-rh.attrs["long_name"] = "relative humidity (%)"
-rh.attrs["units"] = "%"
+    # calculate fraction of surface solar radiation that is direct (0-1) -- used as "fdir" input
+    # TO DO
 
-# calculate wind speed (m/s) -- used as "speed" input
-u = era5land["u10"]
-v = era5land["v10"]
-ws = np.sqrt(u**2 + v**2)
-ws.attrs["long_name"] = "wind speed (m/s)"
-ws.attrs["units"] = "m s**-1"
+    # load urban_variable.nc that was created in QGIS
+    # TO DO
+
+    # build working dataset: save preprocessed variables into output file
+    output = xr.Dataset(
+        {"solar": ds["solar"],
+         "fdir": TODO,
+         "pres": ds["pres"],
+         "Tair": ds["Tair"],
+         "relhum": ds["relhum"],
+         "speed": ds["speed"],
+         "urban": TODO
+        }
+        )
+    output = output.sortby("latitude", ascending=False)
+    # Create needed coordinates
+    time = output.valid_time
+    output = output.assign_coords(
+        year = time.dt.year,
+        month = time.dt.month,
+        day=time.dt.day,
+        hour=time.dt.hour,
+        # decimal day of month (UTC)
+        dday = (time.dt.day
+                + time.dt.hour / 24
+                + time.dt.minute / 1440
+                + time.dt.second / 86400))
+    
+    return output
 
 
+def main():
+    files = sorted(INPUT_DIR.glob("era5_land_*.nc"))
 
-# save preprocessed files into the new folder
+    for file in files:
+        output_file = OUTPUT_DIR/file.name   # TO DO: set names of output files to be wbgt_inputs_{year}_{month}.nc
+
+        if output_file.exists():
+            print(f"Skipping existing: {output_file.name}")
+            continue
+
+        print(f"Processing: {file.name}")
+
+        with xr.open_dataset(file) as ds:
+            ds_processed = preprocess_dataset(ds)
+            ds_processed.to_netcdf(output_file)
+
+    print("Done.")
+
+
+if __name__ == "__main__":
+    main()
+
+
 

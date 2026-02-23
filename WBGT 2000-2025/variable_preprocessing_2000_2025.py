@@ -56,7 +56,7 @@ def preprocess_dataset(ds):
     # TO DO
 
     # build working dataset: save preprocessed variables into output file
-    output = xr.Dataset(
+    preprocessed = xr.Dataset(
         {"solar": ds["solar"],
          "fdir": TODO,
          "pres": ds["pres"],
@@ -66,10 +66,10 @@ def preprocess_dataset(ds):
          "urban": TODO
         }
         )
-    output = output.sortby("latitude", ascending=False)
+    preprocessed = preprocessed.sortby("latitude", ascending=False)
     # Create needed coordinates
-    time = output.valid_time
-    output = output.assign_coords(
+    time = preprocessed.valid_time
+    output = preprocessed.assign_coords(
         year = time.dt.year,
         month = time.dt.month,
         day=time.dt.day,
@@ -79,6 +79,17 @@ def preprocess_dataset(ds):
                 + time.dt.hour / 24
                 + time.dt.minute / 1440
                 + time.dt.second / 86400))
+    
+    return preprocessed
+
+
+def clip_to_ca_boundary(preprocessed):
+    
+    shp_path = Path("ca_state/CA_state.shp")
+    ca = gpd.read_file(shp_path)
+    ca = ca.to_crs("EPSG:4326")
+    mask = regionmask.mask_geopandas(ca, preprocessed.longitude, preprocessed.latitude)
+    output = preprocessed.where(~mask.isnull()) # keep whole grid cells on the edges of CA
     
     return output
 
@@ -99,6 +110,7 @@ def main():
 
         with xr.open_dataset(file) as ds:
             ds_processed = preprocess_dataset(ds)
+            ds_processed = clip_to_ca_boundary(ds_processed)
             ds_processed.to_netcdf(output_file)
 
     print("Done.")

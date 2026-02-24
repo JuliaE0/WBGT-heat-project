@@ -58,12 +58,12 @@ def preprocess_dataset(ds):
     # build working dataset: save preprocessed variables into output file
     preprocessed = xr.Dataset(
         {"solar": ds["solar"],
-         "fdir": TODO,
+         "fdir": TO DO,
          "pres": ds["pres"],
          "Tair": ds["Tair"],
          "relhum": ds["relhum"],
          "speed": ds["speed"],
-         "urban": TODO
+         "urban": TO DO
         }
         )
     preprocessed = preprocessed.sortby("latitude", ascending=False)

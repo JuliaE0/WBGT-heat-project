@@ -67,6 +67,7 @@ def preprocess_dataset(ds):
         }
         )
     preprocessed = preprocessed.sortby("latitude", ascending=False)
+    
     # Create needed coordinates
     time = preprocessed.valid_time
     output = preprocessed.assign_coords(

@@ -101,7 +101,7 @@ def main():
     for file in files:
         year = file.stem.split("_")[2]
         month = file.stem.split("_")[3]
-        output_file = OUTPUT_DIR/f"wbgt_inputs_{year}_{month}.nc"
+        output_file = OUTPUT_DIR/f"wbgt_inputs_{year}_{month}.nc"  # RENAME OUTPUTS TO BE era5_land_preprocessed
 
         if output_file.exists():
             print(f"Skipping existing: {output_file.name}")

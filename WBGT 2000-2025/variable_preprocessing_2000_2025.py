@@ -11,12 +11,13 @@ from pathlib import Path
 
 # set directory and create folder to hold new preprocessed files
 INPUT_DIR = Path("era5_land_data")
-OUTPUT_DIR = Path("era5_land_preprocessed")
+# add another input directory for "era5_interpolated"  TO DO
+OUTPUT_DIR = Path("wbgt_inputs_preprocessed")
 OUTPUT_DIR.mkdir(parents=TRUE, exist_ok=True)
 
 def preprocess_dataset(ds):
     """
-    preprocess ERA5-Land variables
+    preprocess input variables
     """
 
     # convert t2m from K to Celsius -- used as "Tair" input
@@ -51,10 +52,13 @@ def preprocess_dataset(ds):
 
     # calculate fraction of surface solar radiation that is direct (0-1) -- used as "fdir" input
     # TO DO
+    # take interpolated ERA5 fdir variable from Path("era5_interpolated"), divide by ERA5-Land ssrd variable
 
     # load urban_variable.nc that was created in QGIS
     # TO DO
+    # first need to create the variable files in QGIS for each year
 
+    
     # build working dataset: save preprocessed variables into output file
     preprocessed = xr.Dataset(
         {"solar": ds["solar"],
@@ -86,7 +90,7 @@ def preprocess_dataset(ds):
 
 def clip_to_ca_boundary(preprocessed):
     
-    shp_path = Path("ca_state/CA_state.shp")
+    shp_path = Path("ca_state/CA_state.shp")  # USE NEW SHAPE FILE. FIX
     ca = gpd.read_file(shp_path)
     ca = ca.to_crs("EPSG:4326")
     mask = regionmask.mask_geopandas(ca, preprocessed.longitude, preprocessed.latitude)
@@ -97,11 +101,12 @@ def clip_to_ca_boundary(preprocessed):
 
 def main():
     files = sorted(INPUT_DIR.glob("era5_land_*.nc"))
+    # add another input files for "era5_{year}_{month}_idw.nc"
 
     for file in files:
         year = file.stem.split("_")[2]
         month = file.stem.split("_")[3]
-        output_file = OUTPUT_DIR/f"wbgt_inputs_{year}_{month}.nc"  # RENAME OUTPUTS TO BE era5_land_preprocessed
+        output_file = OUTPUT_DIR/f"wbgt_inputs_{year}_{month}.nc"
 
         if output_file.exists():
             print(f"Skipping existing: {output_file.name}")
@@ -109,7 +114,7 @@ def main():
 
         print(f"Processing: {file.name}")
 
-        with xr.open_dataset(file) as ds:
+        with xr.open_dataset(file) as ds:  # EITHER ADD ERA5 fdir TO ds OR ADD NOTHER INPUT TO THE preprocess_dataset FUNCTION
             ds_processed = preprocess_dataset(ds)
             ds_processed = clip_to_ca_boundary(ds_processed)
             ds_processed.to_netcdf(output_file)

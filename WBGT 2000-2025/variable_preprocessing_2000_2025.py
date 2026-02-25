@@ -1,5 +1,8 @@
 # ---- Variable preprocessing 2000 to 2025 ----
 
+# Preprocess these WBGT input variables: solar, fdir, pres, Tair, relhum, speed, urban
+# other WBGT input: cza will be derived in R
+
 # install required libraries
 # !pip install xarray netCDF4 h5netcdf numpy rioxarray regionmask geopandas
 
@@ -9,13 +12,13 @@ import geopandas as gpd
 import regionmask
 from pathlib import Path
 
-# set directory and create folder to hold new preprocessed files
+
 INPUT_DIR = Path("era5_land_data")
 # add another input directory for "era5_interpolated"  TO DO
 OUTPUT_DIR = Path("wbgt_inputs_preprocessed")
 OUTPUT_DIR.mkdir(parents=TRUE, exist_ok=True)
 
-def preprocess_dataset(ds):
+def preprocess_dataset(ds):   # ADD ANOTHER INPUT FOR era5_interpolated?
     """
     preprocess input variables
     """
@@ -54,12 +57,12 @@ def preprocess_dataset(ds):
     # TO DO
     # take interpolated ERA5 fdir variable from Path("era5_interpolated"), divide by ERA5-Land ssrd variable
 
-    # load urban_variable.nc that was created in QGIS
+    # load urban variable that was created in QGIS -- used as "urban" input
     # TO DO
-    # first need to create the variable files in QGIS for each year
+    # first need to create the yearly urban files in QGIS
 
     
-    # build working dataset: save preprocessed variables into output file
+    # build working dataset: save preprocessed variables into output dataset
     preprocessed = xr.Dataset(
         {"solar": ds["solar"],
          "fdir": TO DO,
@@ -90,7 +93,7 @@ def preprocess_dataset(ds):
 
 def clip_to_ca_boundary(preprocessed):
     
-    shp_path = Path("ca_state/CA_state.shp")  # USE NEW SHAPE FILE. FIX
+    shp_path = Path("ca_state/CA_state.shp")  # USE NEW SHAPE FILE. DOWNLOAD FROM GOOGLE DRIVE FIRST. FIX
     ca = gpd.read_file(shp_path)
     ca = ca.to_crs("EPSG:4326")
     mask = regionmask.mask_geopandas(ca, preprocessed.longitude, preprocessed.latitude)

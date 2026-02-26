@@ -13,49 +13,51 @@ import regionmask
 from pathlib import Path
 
 
-INPUT_DIR = Path("era5_land_data")
-# add another input directory for "era5_interpolated"  TO DO
+INPUT_DIR_ERA5_LAND = Path("era5_land_data")
+INPUT_DIR_ERA5 = Path("era5_interpolated")
 OUTPUT_DIR = Path("wbgt_inputs_preprocessed")
-OUTPUT_DIR.mkdir(parents=TRUE, exist_ok=True)
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-def preprocess_dataset(ds):   # ADD ANOTHER INPUT FOR era5_interpolated?
+def preprocess_variables(era5_land, era5):
     """
     preprocess input variables
     """
 
     # convert t2m from K to Celsius -- used as "Tair" input
-    ds["Tair"] = ds["t2m"] - 273.15
-    ds["Tair"].attrs["units"] = "C"
+    Tair = era5_land["t2m"] - 273.15
+    Tair.attrs["units"] = "C"
 
     # convert d2m from K to Celsius -- used in "relhum" calculation
-    ds["d2m_c"] = ds["d2m"] - 273.15
-    ds["d2m_c"].attrs["units"] = "C"
+    d2m_c = era5_land["d2m"] - 273.15
+    d2m_c.attrs["units"] = "C"
 
     # convert ssrd from J/m2 to W/m2 -- used as "solar" input
-    ds["solar"] = ds["ssrd"] / 3600    # dividy by 3600 seconds since hourly accumulated
-    ds["solar"].attrs["units"] = "W m**-2"
+    solar = era5_land["ssrd"] / 3600    # dividy by 3600 seconds since hourly accumulated
+    solar.attrs["units"] = "W m**-2"
 
     # convert sp from Pa to hPa -- used as "pres" input
-    ds["pres"] = ds["sp"] / 100
-    ds["pres"].attrs["units"] = "hPa"
+    pres = era5_land["sp"] / 100
+    pres.attrs["units"] = "hPa"
     
     # calculate relative humidity (%) -- used as "relhum" input
-    vapor_pres = 610.94*np.exp(17.625*ds["d2m_c"] / (243.04+ds["d2m_c"]))
-    sat_vapor_pres = 610.94*np.exp(17.625*ds["Tair"] / (243.04+ds["Tair"]))
-    ds["relhum"] = 100*(vapor_pres/sat_vapor_pres)
-    ds["relhum"].attrs["long_name"] = "relative humidity (%)"
-    ds["relhum"].attrs["units"] = "%"
+    vapor_pres = 610.94*np.exp(17.625*d2m_c / (243.04+d2m_c))
+    sat_vapor_pres = 610.94*np.exp(17.625*Tair / (243.04+Tair))
+    relhum = 100*(vapor_pres/sat_vapor_pres)
+    relhum.attrs["long_name"] = "relative humidity (%)"
+    relhum.attrs["units"] = "%"
 
     # calculate wind speed (m/s) -- used as "speed" input
-    u = ds["u10"]
-    v = ds["v10"]
-    ds["speed"] = np.sqrt(u**2 + v**2)
-    ds["speed"].attrs["long_name"] = "wind speed (m/s)"
-    ds["speed"].attrs["units"] = "m s**-1"
+    u = era5_land["u10"]
+    v = era5_land["v10"]
+    speed = np.sqrt(u**2 + v**2)
+    speed.attrs["long_name"] = "wind speed (m/s)"
+    speed.attrs["units"] = "m s**-1"
 
     # calculate fraction of surface solar radiation that is direct (0-1) -- used as "fdir" input
-    # TO DO
-    # take interpolated ERA5 fdir variable from Path("era5_interpolated"), divide by ERA5-Land ssrd variable
+    fdir = xr.where(era5_land["ssrd"].isnull(), np.nan, 
+                    xr.where(era5_land["ssrd"] > 0, era5["fdir"].values / era5_land["ssrd"].values, 0.0))
+    fdir.attrs["long_name"] = "fraction of surface solar radiation that is direct (0-1)"
+    fdir.attrs["units"] = ""  # no units since it's a fraction
 
     # load urban variable that was created in QGIS -- used as "urban" input
     # TO DO
@@ -64,12 +66,12 @@ def preprocess_dataset(ds):   # ADD ANOTHER INPUT FOR era5_interpolated?
     
     # build working dataset: save preprocessed variables into output dataset
     preprocessed = xr.Dataset(
-        {"solar": ds["solar"],
-         "fdir": TO DO,
-         "pres": ds["pres"],
-         "Tair": ds["Tair"],
-         "relhum": ds["relhum"],
-         "speed": ds["speed"],
+        {"solar": solar,
+         "fdir": fdir,
+         "pres": pres,
+         "Tair": Tair,
+         "relhum": relhum,
+         "speed": speed,
          "urban": TO DO
         }
         )
@@ -77,7 +79,7 @@ def preprocess_dataset(ds):   # ADD ANOTHER INPUT FOR era5_interpolated?
     
     # Create needed coordinates
     time = preprocessed.valid_time
-    output = preprocessed.assign_coords(
+    preprocessed = preprocessed.assign_coords(
         year = time.dt.year,
         month = time.dt.month,
         day=time.dt.day,
@@ -103,24 +105,26 @@ def clip_to_ca_boundary(preprocessed):
 
 
 def main():
-    files = sorted(INPUT_DIR.glob("era5_land_*.nc"))
-    # add another input files for "era5_{year}_{month}_idw.nc"
+    files = sorted(INPUT_DIR_ERA5_LAND.glob("era5_land_*.nc"))
 
     for file in files:
         year = file.stem.split("_")[2]
         month = file.stem.split("_")[3]
+        
         output_file = OUTPUT_DIR/f"wbgt_inputs_{year}_{month}.nc"
-
+        
         if output_file.exists():
             print(f"Skipping existing: {output_file.name}")
             continue
+        
+        idw_file = INPUT_DIR_ERA5 / f"era5_{year}_{month}_idw.nc"
 
-        print(f"Processing: {file.name}")
+        print(f"Processing: {year}-{month}")
 
-        with xr.open_dataset(file) as ds:  # EITHER ADD ERA5 fdir TO ds OR ADD NOTHER INPUT TO THE preprocess_dataset FUNCTION
-            ds_processed = preprocess_dataset(ds)
-            ds_processed = clip_to_ca_boundary(ds_processed)
-            ds_processed.to_netcdf(output_file)
+        with xr.open_dataset(file) as era5_land, xr.open_dataset(idw_file) as era5:
+            ds = preprocess_variables(era5_land, era5)
+            ds = clip_to_ca_boundary(ds)
+            ds.to_netcdf(output_file)
 
     print("Done.")
 

@@ -39,6 +39,7 @@ for y in range(2000, 2026):
         req["month"] = month
         print("Downloading", target)
         client.retrieve(dataset, req, target)
+print("Finished downloading ERA5-Land data")
 
 
 # Download ERA5 data using CDS API; loop over all months from 2000 to 2025
@@ -70,3 +71,6 @@ for y in range(2000, 2026):
         req["month"] = month
         print("Downloading", target)
         client.retrieve(dataset, req, target)
+print("Finished downloading ERA5 data")
+
+

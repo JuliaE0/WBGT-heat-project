@@ -12,6 +12,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(ncdf4)
 library(terra)
 library(parallel)
+library(lubridate)
 ```
 
 ```{r}
@@ -19,6 +20,9 @@ library(parallel)
 wbgt_aug_2019 <- nc_open("wbgt_aug_2019.nc")
 names(wbgt_aug_2019$var)
 dim(ncvar_get(wbgt_aug_2019, "wbgt")) # R shows dimensions as longitude x latitude x time
+
+# "wbgt_aug_2019.nc" time is in "seconds since 1970-01-01" --> POSIX time (a form of UTC time)
+ncatt_get(wbgt_aug_2019, "valid_time", "units")$value
 ```
 
 ```{r}
@@ -26,21 +30,29 @@ dim(ncvar_get(wbgt_aug_2019, "wbgt")) # R shows dimensions as longitude x latitu
 wbgt_inputs_aug_2019 <- nc_open("wbgt_inputs_aug_2019.nc")
 names(wbgt_inputs_aug_2019$var)
 dim(ncvar_get(wbgt_inputs_aug_2019, "Tair")) # R shows dimensions as longitude x latitude x time
+
+# check time of wbgt_inputs_aug_2019.nc file -- "seconds since 1970-01-01"
+ncatt_get(wbgt_inputs_aug_2019, "valid_time", "units")$value
 ```
 
 ```{r}
-times <- as.POSIXct(ncvar_get(wbgt_aug_2019, "valid_time"), origin = "1970-01-01", tz = "UTC")
-t_index <- which(times == as.POSIXct("2019-08-01 18:00", tz="UTC"))
+# first convert POSIX time -> UTC time -> California local time
+times_utc <- as.POSIXct(ncvar_get(wbgt_aug_2019, "valid_time"), origin = "1970-01-01", tz = "UTC")
+times_ca <- with_tz(times_utc, "America/Los_Angeles")
+
+# specify time of plot
+target_time <- as.POSIXct("2019-08-01 18:00", tz = "America/Los_Angeles")
+t_index <- which(times_ca == target_time)
 
 # plot with wet-bulb globe temp at a single valid_time
 r <- rast("wbgt_aug_2019.nc", subds = "wbgt")
 plot(r[[t_index]])
-title(main = paste("wbgt at", times[t_index]), line=3)
+title(main = paste("WBGT at", format(times_ca[t_index], "%Y-%m-%d %H:%M %Z")), line=3)
 
 # plot dry-bulb air temperature at a single valid_time
 r <- rast("wbgt_inputs_aug_2019.nc", subds = "Tair")
 plot(r[[t_index]])
-title(main = paste("dry-bulb air temp at", times[t_index]), line=3)
+title(main = paste("dry-bulb air temp at", format(times_ca[t_index], "%Y-%m-%d %H:%M %Z")), line=3)
 ```
 
 ```{r}
@@ -69,55 +81,59 @@ cor_time <- sapply(
         as.vector(wbgt[,,t]),
         use="complete.obs"))
 
-time_seq <- seq(as.POSIXct("2019-08-01 00:00", tz="UTC"), by = "hour", length.out = ntime)
+times_utc <- as.POSIXct(ncvar_get(wbgt_aug_2019, "valid_time"), origin = "1970-01-01", tz = "UTC")
+times_ca <- with_tz(times_utc, "America/Los_Angeles")
 
 # correlation during daytime higher than during nighttime
-hours <- as.integer(format(time_seq, "%H"))
-day_cor   <- cor_time[hours >= 13 & hours <= 23]
-night_cor <- cor_time[hours <= 13]
-print(paste("daytime (hr 13-23) correlation:", mean(day_cor)))
-print(paste("nighttime (hr 0-13) correlation", mean(night_cor)))
+hours <- hour(times_ca)
+day_cor   <- cor_time[hours >= 8 & hours < 20]  # 8am to 7pm
+night_cor <- cor_time[hours < 8 | hours >= 20]  # 8pm to 7am
+print(paste("daytime (8am to 7 pm) correlation:", mean(day_cor)))
+print(paste("nighttime (8pm to 7am) correlation", mean(night_cor)))
 
 # time series over entire Aug 2019, hourly
 par(mar = c(5, 5, 1, 0)) 
-plot(cor_time, type="l",
+plot(times_ca, cor_time, type="l",
      ylab="Spatial correlation \n bewteen dry-bulb air temp and WBGT",
-     xlab="Time index")
+     xlab="Date (California time)")
 
 # time series over one week
-start_time <- as.POSIXct("2019-08-01 00:00", tz="UTC")
+start_time <- as.POSIXct("2019-08-01 00:00", tz="America/Los_Angeles")
 end_time   <- start_time + 168*3600
-idx <- which(time_seq >= start_time & time_seq < end_time)
+idx <- which(times_ca >= start_time & times_ca < end_time)
 par(mar = c(5, 5, 1, 0)) 
-plot(time_seq[idx],
+plot(times_ca[idx],
      cor_time[idx],
      type="l",
      ylab="Spatial correlation \n bewteen dry-bulb air temp and WBGT",
-     xlab="Date")
+     xlab="Date (California time)")
 
 # time series over two days
-start_time <- as.POSIXct("2019-08-01 00:00", tz="UTC")
+start_time <- as.POSIXct("2019-08-01 00:00", tz="America/Los_Angeles")
 end_time   <- start_time + 48*3600
-idx <- which(time_seq >= start_time & time_seq < end_time)
-par(mar = c(5, 5, 1, 0)) 
-plot(time_seq[idx],
+idx <- which(times_ca >= start_time & times_ca < end_time)
+par(mar = c(8, 5, 1, 0)) 
+plot(times_ca[idx],
      cor_time[idx],
      type="l",
      ylab="Spatial correlation \n bewteen dry-bulb air temp and WBGT",
-     xlab="Date")
+     xlab="", xaxt = "n")
+title(xlab = "Date in Aug 2019, CA time", line = 6)
+hour_ticks <- seq(start_time, end_time, by = "1 hour")
+axis.POSIXct(1, at = hour_ticks, format = "%H", las = 2)
+midnight_ticks <- hour_ticks[format(hour_ticks, "%H") == "00"]
+axis.POSIXct(1, at = midnight_ticks, format = "%m-%d", las = 2, line = 2)
 
-# mean correlation over a day
-hour_all <- as.integer(format(time_seq, "%H"))
-
+# mean correlation by hour of day
+hour_all <- hour(times_ca)
 mean_by_hour <- tapply(cor_time, hour_all, mean, na.rm=TRUE)
-
 plot(0:23, mean_by_hour, type="l",
-     xlab="Hour of day",
-     ylab="Mean spatial correlation")
+     xlab="Hour of day (CA time)",
+     ylab="Mean spatial correlation", xaxt = "n")
+axis(1, at = 0:23, labels = 0:23, cex.axis = 0.8)
 ```
-These time series shows how the spatial relationship between dry-bulb air temp and wbgt changes over time.
+These time series shows how the spatial relationship between dry-bulb air temp and WBGT changes over time. WBGT spatial patterns follow dry-bulb air temperature more strongly during daytime (higher correlation at hours 6am to 8pm) and diverge more at night (lower correlation). 
 
-WBGT spatial patterns follow dry-bulb air temperature more strongly during daytime (higher correlation) and diverge more at night (lower correlation). 
 
 ```{r}
 # correlation across time at each grid cell

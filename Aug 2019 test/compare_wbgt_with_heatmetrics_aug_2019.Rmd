@@ -12,6 +12,9 @@ knitr::opts_chunk$set(echo = TRUE)
 library(dplyr)
 library(ncdf4)
 library(terra)
+library(tigris)
+library(sf)
+library(ggplot2)
 ```
 
 ```{r}
@@ -23,21 +26,19 @@ heatvars_aug_2019 <- subset(heatvars, Date >= "2019-08-01" & Date <= "2019-08-31
 
 # load wbgt_aug_2019
 wbgt_aug_2019 <- nc_open("wbgt_aug_2019.nc")
+
+# "wbgt_aug_2019.nc" time is in "seconds since 1970-01-01" --> POSIX time (a form of UTC time)
+ncatt_get(wbgt_aug_2019, "valid_time", "units")$value
 ```
 
 ```{r}
-# plot heatmetrics WBGTmin_C, WBGTmax_C, WBGTmean_C variables for a date in August 2019
+# plot heatmetrics WBGTmin_C, WBGTmax_C, WBGTmean_C variables for a Aug 1, 2019
 
 heatvars_aug_1_2019 <- subset(heatvars, Date == "2019-08-01")
-
-library(tigris)
-library(sf)
 
 counties_sf <- counties(cb = TRUE, year = 2020) %>%  st_as_sf()
 map_data <- counties_sf %>% left_join(heatvars_aug_1_2019, by = c("GEOID" = "StCoFIPS"))
 ca_map <- map_data %>% filter(STATEFP == "06")  # plot only California
-
-library(ggplot2)
 
 # Lowest wet-bulb globe temperature (WBGT) observed from hourly data from 00 LST to 23 LST
 ggplot(ca_map) + geom_sf(aes(fill = WBGTmin_C), color = NA) + 
@@ -56,26 +57,20 @@ ggplot(ca_map) + geom_sf(aes(fill = WBGTmean_C), color = NA) +
 ```
 
 ```{r}
-times <- as.POSIXct(ncvar_get(wbgt_aug_2019, "valid_time"), origin = "1970-01-01", tz = "UTC")
-t_index <- which(times == as.POSIXct("2019-08-01 18:00", tz="UTC"))  # t_index is UTC time
+# Plot in CA local time
+
+times_utc <- as.POSIXct(ncvar_get(wbgt_aug_2019, "valid_time"), origin = "1970-01-01", tz = "UTC")
+times_ca <- with_tz(times_utc, "America/Los_Angeles")
+t_index <- which(times_ca == as.POSIXct("2019-08-01 18:00", tz = "America/Los_Angeles"))
 
 # plot of wet-bulb globe temp at a single valid_time
 r <- rast("wbgt_aug_2019.nc", subds = "wbgt")
 plot(r[[t_index]])
-title(main = paste("wbgt at", times[t_index], "UTC"), line=3)
+title(main = paste("WBGT at", format(times_ca[t_index], "%Y-%m-%d %H:%M %Z")), line=3)
 ```
 
 ```{r}
-# based on the documentation of heatmetrics data, the time in that data is in LST
-
-# "wbgt_aug_2019.nc" time is in "seconds since 1970-01-01" --> POSIX time (a form of UTC time)
-ncatt_get(wbgt_aug_2019, "valid_time", "units")$value
-```
-
-```{r}
-# need to convert the time in wbgt_aug_2019.nc from UTC to LST (CA local time in this case) 
-
-# then need to calculate county-level mean values of wbgt for Aug 1, 2019
+# calculate county-level mean values of wbgt for Aug 1, 2019
 
 # then plot WBGT county mean values for CA 2019-08-01 from wbgt_aug_2019.nc data and from heatvars
 

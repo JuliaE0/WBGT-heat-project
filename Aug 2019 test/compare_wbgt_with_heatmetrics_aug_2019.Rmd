@@ -39,14 +39,17 @@ ca_map <- map_data %>% filter(STATEFP == "06")  # plot only California
 
 library(ggplot2)
 
+# Lowest wet-bulb globe temperature (WBGT) observed from hourly data from 00 LST to 23 LST
 ggplot(ca_map) + geom_sf(aes(fill = WBGTmin_C), color = NA) + 
   scale_fill_viridis_c(name = "minimum WBGT (C)") + theme_minimal() +
   labs(title = "Minimum WBGT by County", subtitle = "August 1, 2019")
 
+# Highest wet-bulb globe temperature (WBGT) observed from hourly data from 00 LST to 23 LST
 ggplot(ca_map) + geom_sf(aes(fill = WBGTmax_C), color = NA) + 
   scale_fill_viridis_c(name = "maximum WBGT (C)") + theme_minimal() +
   labs(title = "Maximum WBGT by County", subtitle = "August 1, 2019")
-
+	
+# Wet-bulb globe temperature (WBGT) averaged over hourly observations from 00 LST to 23 LST
 ggplot(ca_map) + geom_sf(aes(fill = WBGTmean_C), color = NA) + 
   scale_fill_viridis_c(name = "mean WBGT (C)") + theme_minimal() +
   labs(title = "Mean WBGT by County", subtitle = "August 1, 2019")
@@ -54,11 +57,32 @@ ggplot(ca_map) + geom_sf(aes(fill = WBGTmean_C), color = NA) +
 
 ```{r}
 times <- as.POSIXct(ncvar_get(wbgt_aug_2019, "valid_time"), origin = "1970-01-01", tz = "UTC")
-t_index <- which(times == as.POSIXct("2019-08-01 18:00", tz="UTC"))
+t_index <- which(times == as.POSIXct("2019-08-01 18:00", tz="UTC"))  # t_index is UTC time
 
 # plot of wet-bulb globe temp at a single valid_time
 r <- rast("wbgt_aug_2019.nc", subds = "wbgt")
 plot(r[[t_index]])
-title(main = paste("wbgt at", times[t_index]), line=3)
+title(main = paste("wbgt at", times[t_index], "UTC"), line=3)
 ```
+
+```{r}
+# based on the documentation of heatmetrics data, the time in that data is in LST
+
+# "wbgt_aug_2019.nc" time is in "seconds since 1970-01-01" --> POSIX time (a form of UTC time)
+ncatt_get(wbgt_aug_2019, "valid_time", "units")$value
+```
+
+```{r}
+# need to convert the time in wbgt_aug_2019.nc from UTC to LST (CA local time in this case) 
+
+# then need to calculate county-level mean values of wbgt for Aug 1, 2019
+
+# then plot WBGT county mean values for CA 2019-08-01 from wbgt_aug_2019.nc data and from heatvars
+
+# then calculate correlation coefficient and RMSE between the two datasets/plots
+
+```
+
+
+
 

@@ -16,6 +16,7 @@ library(tigris)
 library(sf)
 library(ggplot2)
 library(lubridate)
+library(exactextractr)
 ```
 
 ```{r}
@@ -86,7 +87,9 @@ r_day <- mean(r[[day_index]])  # compute daily mean per grid cell
 ca_counties <- counties(state = "CA", cb = TRUE, year = 2020) %>%  st_as_sf()
 ca_counties <- st_transform(ca_counties, crs(r_day))  # make CRS of ca_counties match CRS of r_day
 
-county_means <- terra::extract(r_day, vect(ca_counties), fun = mean, na.rm = TRUE)
+county_means <- terra::extract(r_day, vect(ca_counties), fun = mean, 
+                               weights = TRUE, na.rm = TRUE)
+
 ca_counties$WBGT_mean <- county_means[,2]
 
 # plot
@@ -95,13 +98,55 @@ ggplot(ca_counties) +
   scale_fill_viridis_c(name = "Daily Mean WBGT (°C)") +
   theme_minimal() +
   labs(title = "County-Level Daily Mean WBGT", subtitle = "2019-08-01")
-
-
-# then plot WBGT county mean values for CA 2019-08-01 from wbgt_aug_2019.nc data and from heatvars
-
-# then calculate correlation coefficient and RMSE between the two datasets/plots
-
 ```
+
+```{r}
+# plot with same color scale to compare
+
+common_limits <- range(c(ca_map$WBGTmean_C, ca_counties$WBGT_mean))
+
+# from heatvars
+ggplot(ca_map) + 
+  geom_sf(aes(fill = WBGTmean_C), color = NA) + 
+  scale_fill_viridis_c(name = "mean WBGT (C)", limits = common_limits) +
+  theme_minimal() + labs(title = "Mean WBGT by County", subtitle = "August 1, 2019")
+
+# from wbgt calculation
+ggplot(ca_counties) +
+  geom_sf(aes(fill = WBGT_mean), color = NA) +
+  scale_fill_viridis_c(name = "Daily Mean WBGT (°C)", limits = common_limits) +
+  theme_minimal() +  labs(title = "County-Level Daily Mean WBGT", subtitle = "2019-08-01")
+
+
+# how much they differ
+library(dplyr)
+
+comparison <- ca_counties %>%
+  st_drop_geometry() %>%
+  dplyr::select(GEOID, WBGT_mean) %>%
+  left_join(
+    ca_map %>%
+      st_drop_geometry() %>%
+      dplyr::select(GEOID, WBGTmean_C),
+    by = "GEOID")
+
+comparison <- comparison %>%
+  mutate(diff_C = WBGT_mean - WBGTmean_C)
+
+summary(comparison$diff_C)
+
+ggplot(comparison, aes(x = WBGTmean_C, y = WBGT_mean)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed") +
+  geom_smooth(method = "lm", color = "blue") +
+  theme_minimal() +
+  labs(
+    x = "Spangler WBGT",
+    y = "My WBGT",
+    title = "Comparison of County WBGT Values",
+    subtitle = "Red = 1:1 line, Blue = regression")
+```
+
 
 ```{r}
 # correlation: ca_counties vs ca_map

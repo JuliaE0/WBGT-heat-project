@@ -25,12 +25,12 @@ from pyproj import Transformer
 # =========================
 # USER SETTINGS (EDIT THESE)
 # =========================
-IN_DIR = "/Users/new account/Desktop/WBGT-heat-project/Aug 2019 test"
-OUT_DIR = "/Users/new account/Desktop/WBGT-heat-project/Aug 2019 test/nn_interpolated"
+IN_DIR = "/Users/new account/Desktop/WBGT-heat-project/Aug 2019 test/ERA5"
+OUT_DIR = "/Users/new account/Desktop/WBGT-heat-project/Aug 2019 test/ERA5_nn_interpolated"
 TARGET_TIF = "/Users/new account/Desktop/WBGT-heat-project/era5land_d2m_2019-08-01T00.tif"
 
 # Subset buffer in degrees (applied in WGS84 lon/lat after converting bounds)
-BUFFER_DEG = 0.20
+BUFFER_DEG = 0.5
 
 # Variable names in ERA5
 ERA5_VAR = ["fdir"]
@@ -130,7 +130,8 @@ def nearest_interp_to_target(sub, varname, tgt_lons, tgt_lats):
     out = da.interp(
         longitude=xr.DataArray(tgt_lons, dims="longitude"),
         latitude=xr.DataArray(tgt_lats_interp, dims="latitude"),
-        method="nearest"
+        method="nearest",
+        kwargs={"fill_value": "extrapolate"}
     )
 
     if flip_lat_back:
@@ -191,6 +192,10 @@ def process_one_year(nc_path, tgt_lons, tgt_lats, bounds_wgs84):
         units = ds[varname].attrs.get("units", "")
         sub = subset_source(ds, varname, bounds_wgs84, BUFFER_DEG)
 
+        print("Subset shape:", sub[varname].shape)
+        print("Subset lon range:", float(sub.longitude.min()), float(sub.longitude.max()))
+        print("Subset lat range:", float(sub.latitude.min()), float(sub.latitude.max()))
+
         time_dim = None
         for cand in ("valid_time", "time"):
             if cand in sub.coords:
@@ -202,15 +207,12 @@ def process_one_year(nc_path, tgt_lons, tgt_lats, bounds_wgs84):
         times = sub[time_dim].values
         year_str = str(times[0])[:4]
 
-        year_out_dir = os.path.join(OUT_DIR, year_str)
-        os.makedirs(year_out_dir, exist_ok=True)
-
         print(f"Nearest-neighbor interpolating {len(times)} timesteps for {varname} ({year_str})...")
         out_da = nearest_interp_to_target(sub, varname, tgt_lons, tgt_lats)
         out_da = out_da.transpose(time_dim, "latitude", "longitude")
         out_3d = out_da.values
 
-        out_path = os.path.join(year_out_dir, f"era5_{varname}_nn_{year_str}.nc")
+        out_path = os.path.join(OUT_DIR, f"era5_{varname}_nn_{year_str}.nc")
         export_timeseries_to_nc(out_path, out_3d, times, tgt_lons, tgt_lats, varname, units)
 
         print(f"Finished {varname} {year_str}")

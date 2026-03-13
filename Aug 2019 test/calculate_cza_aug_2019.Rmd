@@ -1,5 +1,5 @@
 ---
-title: "calculate_cza"
+title: "calculate_cza_and_fdir"
 output: pdf_document
 ---
 
@@ -24,28 +24,23 @@ library(terra)
 ```
 
 ```{r}
-era5land <- nc_open("era5-land_2019.nc") # era5-land
-names(era5land$var)
-
-era5 <- nc_open("era5_2019.nc") # era5
-names(era5$var)
-```
-
-```{r}
 # open and view preprocessed dataset
-wbgt_inputs_aug_2019 <- nc_open("wbgt_inputs_aug_2019.nc")
-names(wbgt_inputs_aug_2019$var)
-dim(ncvar_get(wbgt_inputs_aug_2019, "fdir")) # R shows dimensions as longitude x latitude x time
+wbgt_inputs_aug_2019_new <- nc_open("wbgt_inputs_aug_2019_new.nc")
+names(wbgt_inputs_aug_2019_new$var)
+dim(ncvar_get(wbgt_inputs_aug_2019_new, "solar"))
+# R shows dimensions as longitude x latitude x times
 ```
+
+## Calculating "cza"
 
 ```{r}
 # get inputs for calc_cza_int
-lat <- ncvar_get(wbgt_inputs_aug_2019, "latitude")
-lon <- ncvar_get(wbgt_inputs_aug_2019, "longitude")
-year  <- ncvar_get(wbgt_inputs_aug_2019, "year")
-month <- ncvar_get(wbgt_inputs_aug_2019, "month")
-day   <- ncvar_get(wbgt_inputs_aug_2019, "day")
-hour  <- ncvar_get(wbgt_inputs_aug_2019, "hour")
+lat <- ncvar_get(wbgt_inputs_aug_2019_new, "latitude")
+lon <- ncvar_get(wbgt_inputs_aug_2019_new, "longitude")
+year  <- ncvar_get(wbgt_inputs_aug_2019_new, "year")
+month <- ncvar_get(wbgt_inputs_aug_2019_new, "month")
+day   <- ncvar_get(wbgt_inputs_aug_2019_new, "day")
+hour  <- ncvar_get(wbgt_inputs_aug_2019_new, "hour")
 
 # expand to full grid
 grid <- expand.grid(lon = lon, lat = lat, t = seq_along(year))
@@ -67,7 +62,7 @@ cza_array <- array(cza, dim = c(nlon, nlat, ntime))
 
 ```{r}
 # check that dimensions of cza_array match dimensions of wbgt_inputs_aug_2019
-dim(ncvar_get(wbgt_inputs_aug_2019, "solar"))
+dim(ncvar_get(wbgt_inputs_aug_2019_new, "solar"))
 dim(cza_array)  # longitude x latitude x time
 
 summary(cza_array) # check that all values are in [0,1]
@@ -80,7 +75,7 @@ cza_array_for_terra <- aperm(cza_array, c(2,1,3)) # latitude x longitude x time 
 r_cza <- rast(cza_array_for_terra) # convert array to raster
 ext(r_cza) <- c(min(lon), max(lon), min(lat), max(lat))
 crs(r_cza) <- "EPSG:4326"
-ca <- vect("ca_state/CA_State.shp")
+ca <- vect("urban 2019/ca_state/CA_State.shp")
 ca <- project(ca, crs(r_cza))
 r_cza_ca <- crop(r_cza, ca, snap="out") # crop with whole grid cells on CA boundary
 r_cza_ca <- mask(r_cza_ca, ca)
@@ -95,7 +90,7 @@ dim(cza_array_ca) # check dimensions of cropped array
 ```{r}
 # check that cza_array_ca is actually cropped to CA by plotting it
 
-times <- as.POSIXct(ncvar_get(wbgt_inputs_aug_2019, "valid_time"), origin = "1970-01-01", tz = "UTC")
+times <- as.POSIXct(ncvar_get(wbgt_inputs_aug_2019_new, "valid_time"), origin = "1970-01-01", tz = "UTC")
 t_index <- which(times == as.POSIXct("2019-08-01 18:00", tz="UTC"))
 r_cza_ca <- rast(aperm(cza_array_ca, c(2,1,3)))
 ext(r_cza_ca) <- c(min(lon), max(lon), min(lat), max(lat))
@@ -105,6 +100,8 @@ title(main = paste("cza at", times[t_index]), line=3)
 ```
 
 ```{r}
+#### ONLY RUN IF CZA IS NOT ALREADY IN wbgt_inputs_aug_2019.nc
+
 # put cza_array_ca into wbgt_inputs_aug_2019 as a variable -- edited wbgt_inputs_aug_2019 directly
 
 nc_close(wbgt_inputs_aug_2019)
@@ -132,25 +129,108 @@ nc_close(wbgt_inputs_aug_2019)
 ```
 
 ```{r}
-# check wbgt_inputs_aug_2019
+# check wbgt_inputs_aug_2019_new
 
-wbgt_inputs_aug_2019 <- nc_open("wbgt_inputs_aug_2019.nc")
-names(wbgt_inputs_aug_2019$var)
-dim(ncvar_get(wbgt_inputs_aug_2019, "fdir")) # R shows dimensions as longitude x latitude x time
+wbgt_inputs_aug_2019 <- nc_open("wbgt_inputs_aug_2019_new.nc")
+names(wbgt_inputs_aug_2019_new$var)
+dim(ncvar_get(wbgt_inputs_aug_2019_new, "cza"))
+# R shows dimensions as longitude x latitude x time
 ```
 
 ```{r}
 # just checking
-# plot with wbgt_inputs_aug_2019 Tair variable at a single valid_time
+# plot with wbgt_inputs_aug_2019 cza variable at a single valid_time
 
-r <- rast("wbgt_inputs_aug_2019.nc", subds = "Tair")
-time_raw <- ncvar_get(wbgt_inputs_aug_2019, "valid_time")
-time_units <- ncatt_get(wbgt_inputs_aug_2019, "valid_time", "units")$value
+r <- rast("wbgt_inputs_aug_2019_new.nc", subds = "cza")
+time_raw <- ncvar_get(wbgt_inputs_aug_2019_new, "valid_time")
+time_units <- ncatt_get(wbgt_inputs_aug_2019_new, "valid_time", "units")$value
 time_vals <- as.POSIXct(time_raw, origin="1970-01-01", tz="UTC")
 time(r) <- time_vals
 t_index <- which(time_vals == as.POSIXct("2019-08-01 18:00", tz="UTC"))
 plot(r[[t_index]])
-title(main = "Tair at 2019-08-01 18:00", line=3)
+title(main = "cza at 2019-08-01 18:00", line=3)
 ```
 
+
+## Calculating "fdir"
+
+```{r}
+# get inputs for calc_fdir
+lat <- ncvar_get(wbgt_inputs_aug_2019_new, "latitude")
+lon <- ncvar_get(wbgt_inputs_aug_2019_new, "longitude")
+year  <- ncvar_get(wbgt_inputs_aug_2019_new, "year")
+month <- ncvar_get(wbgt_inputs_aug_2019_new, "month")
+dday   <- ncvar_get(wbgt_inputs_aug_2019_new, "dday")  # needs to be day-fractions
+solar <- ncvar_get(wbgt_inputs_aug_2019_new, "solar")
+cza <- ncvar_get(wbgt_inputs_aug_2019_new, "cza")
+
+# expand to full grid
+grid <- expand.grid(lon = lon, lat = lat, t = seq_along(year))
+grid$y   <- year[grid$t]
+grid$mon <- month[grid$t]
+grid$d   <- dday[grid$t]
+grid$solar <- solar[grid$t]
+grid$cza <- cza[grid$t]
+
+# create valid-cell mask
+valid <- !is.nan(grid$solar) & !is.nan(grid$cza)
+
+fdir <- rep(NA, nrow(grid))
+
+# call calc_fdir() ---- takes about 4 minutes
+fdir[valid] <- mapply(calc_fdir, grid$y[valid], grid$mon[valid], grid$d[valid], grid$lat[valid],
+                         grid$lon[valid], grid$solar[valid], grid$cza[valid])
+
+# reshape back to 3-dimensional array
+ntime <- length(year)
+nlat <- length(lat)
+nlon <- length(lon)
+
+fdir_array <- array(fdir, dim = c(nlon, nlat, ntime))
+```
+
+```{r}
+# check that dimensions of fdir_array match dimensions of wbgt_inputs_aug_2019_new
+dim(ncvar_get(wbgt_inputs_aug_2019_new, "solar"))
+dim(fdir_array)  # longitude x latitude x time
+
+summary(fdir_array) # check that all values are in [0,1]
+
+# is fdir_array all 1's! what?
+sum(fdir_array == 0.9, na.rm = TRUE)
+
+# how many non-na values are in fdir_array
+sum(!is.na(fdir_array))
+```
+```{r}
+# crop fdir_array to California shape
+
+fdir_array_for_terra <- aperm(fdir_array, c(2,1,3)) 
+# latitude x longitude x time ordering for terra
+r_fdir <- rast(fdir_array_for_terra) # convert array to raster
+ext(r_fdir) <- c(min(lon), max(lon), min(lat), max(lat))
+crs(r_fdir) <- "EPSG:4326"
+ca <- vect("urban 2019/ca_state/CA_State.shp")
+ca <- project(ca, crs(r_fdir))
+r_fdir_ca <- crop(r_fdir, ca, snap="out") # crop with whole grid cells on CA boundary
+r_fdir_ca <- mask(r_fdir_ca, ca)
+
+# convert raster in the shape of CA back to array
+fdir_array_ca <- as.array(r_fdir_ca)
+fdir_array_ca <- aperm(fdir_array_ca, c(2,1,3)) # reorder back to longitude x latitude x time
+
+dim(fdir_array_ca) # check dimensions of cropped array
+```
+
+```{r}
+# check that fdir_array_ca is actually cropped to CA by plotting it
+
+times <- as.POSIXct(ncvar_get(wbgt_inputs_aug_2019_new, "valid_time"), origin = "1970-01-01", tz = "UTC")
+t_index <- which(times == as.POSIXct("2019-08-01 18:00", tz="UTC"))
+r_fdir_ca <- rast(aperm(fdir_array_ca, c(2,1,3)))
+ext(r_fdir_ca) <- c(min(lon), max(lon), min(lat), max(lat))
+crs(r_fdir_ca) <- "EPSG:4326"
+plot(r_fdir_ca[[t_index]])
+title(main = paste("fdir at", times[t_index]), line=3)
+```
 

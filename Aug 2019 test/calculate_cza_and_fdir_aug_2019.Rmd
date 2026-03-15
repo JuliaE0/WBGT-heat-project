@@ -25,7 +25,7 @@ library(terra)
 
 ```{r}
 # open and view preprocessed dataset
-wbgt_inputs_aug_2019_new <- nc_open("wbgt_inputs_aug_2019_new.nc")
+wbgt_inputs_aug_2019_new <- nc_open("wbgt_inputs_aug_2019_new.nc", write = TRUE)
 names(wbgt_inputs_aug_2019_new$var)
 dim(ncvar_get(wbgt_inputs_aug_2019_new, "solar"))
 # R shows dimensions as longitude x latitude x times
@@ -100,7 +100,7 @@ title(main = paste("cza at", times[t_index]), line=3)
 ```
 
 ```{r}
-#### ONLY RUN IF CZA IS NOT ALREADY IN wbgt_inputs_aug_2019.nc
+#### ONLY RUN IF cza IS NOT ALREADY IN wbgt_inputs_aug_2019.nc
 
 # put cza_array_ca into wbgt_inputs_aug_2019 as a variable -- edited wbgt_inputs_aug_2019 directly
 
@@ -131,7 +131,7 @@ nc_close(wbgt_inputs_aug_2019)
 ```{r}
 # check wbgt_inputs_aug_2019_new
 
-wbgt_inputs_aug_2019 <- nc_open("wbgt_inputs_aug_2019_new.nc")
+wbgt_inputs_aug_2019_new <- nc_open("wbgt_inputs_aug_2019_new.nc")
 names(wbgt_inputs_aug_2019_new$var)
 dim(ncvar_get(wbgt_inputs_aug_2019_new, "cza"))
 # R shows dimensions as longitude x latitude x time
@@ -151,7 +151,6 @@ plot(r[[t_index]])
 title(main = "cza at 2019-08-01 18:00", line=3)
 ```
 
-
 ## Calculating "fdir"
 
 ```{r}
@@ -161,7 +160,7 @@ lon <- ncvar_get(wbgt_inputs_aug_2019_new, "longitude")
 year  <- ncvar_get(wbgt_inputs_aug_2019_new, "year")
 month <- ncvar_get(wbgt_inputs_aug_2019_new, "month")
 dday   <- ncvar_get(wbgt_inputs_aug_2019_new, "dday")  # needs to be day-fractions
-solar <- ncvar_get(wbgt_inputs_aug_2019_new, "solar")
+solar <- ncvar_get(wbgt_inputs_aug_2019_new, "fdir_W")
 cza <- ncvar_get(wbgt_inputs_aug_2019_new, "cza")
 
 # expand to full grid
@@ -177,7 +176,7 @@ valid <- !is.nan(grid$solar) & !is.nan(grid$cza)
 
 fdir <- rep(NA, nrow(grid))
 
-# call calc_fdir() ---- takes about 4 minutes
+# call calc_fdir() ---- takes about 5 minutes
 fdir[valid] <- mapply(calc_fdir, grid$y[valid], grid$mon[valid], grid$d[valid], grid$lat[valid],
                          grid$lon[valid], grid$solar[valid], grid$cza[valid])
 
@@ -196,11 +195,7 @@ dim(fdir_array)  # longitude x latitude x time
 
 summary(fdir_array) # check that all values are in [0,1]
 
-# is fdir_array all 1's! what?
-sum(fdir_array == 0.9, na.rm = TRUE)
-
-# how many non-na values are in fdir_array
-sum(!is.na(fdir_array))
+length(unique(fdir_array[!is.na(fdir_array)])) # checking that there are different values
 ```
 ```{r}
 # crop fdir_array to California shape
@@ -232,5 +227,195 @@ ext(r_fdir_ca) <- c(min(lon), max(lon), min(lat), max(lat))
 crs(r_fdir_ca) <- "EPSG:4326"
 plot(r_fdir_ca[[t_index]])
 title(main = paste("fdir at", times[t_index]), line=3)
+```
+
+```{r}
+####### NEED TO FIX SAVING TO THE FILE--- GOT WEIRD "" NAMES --- JUST CREATE A NEW FILE
+
+# make a copy of wbgt_inputs_aug_2019 and then add fdir to it
+
+```
+
+```{r}
+# check wbgt_inputs_aug_2019_new
+
+wbgt_inputs_aug_2019 <- nc_open("wbgt_inputs_aug_2019_new.nc")
+names(wbgt_inputs_aug_2019_new$var)
+dim(ncvar_get(wbgt_inputs_aug_2019_new, "cza"))
+# R shows dimensions as longitude x latitude x time
+```
+
+## Calculating WBGT "fdir" input using calc_solar_parameters
+
+```{r}
+# get inputs for calc_solar_parameters
+lat <- ncvar_get(wbgt_inputs_aug_2019_new, "latitude")
+lon <- ncvar_get(wbgt_inputs_aug_2019_new, "longitude")
+year  <- ncvar_get(wbgt_inputs_aug_2019_new, "year")
+month <- ncvar_get(wbgt_inputs_aug_2019_new, "month")
+day   <- ncvar_get(wbgt_inputs_aug_2019_new, "day")
+solar <- ncvar_get(wbgt_inputs_aug_2019_new, "solar")  # ERA5-Land ssrd in W/m2
+cza <- ncvar_get(wbgt_inputs_aug_2019_new, "cza")  # calculated from calc_cza_int()
+fdir <- ncvar_get(wbgt_inputs_aug_2019_new, "fdir_frac") # (NN-inter ERA5 fdir)/(ERA5-Land ssrd)
+
+# expand to full grid
+grid <- expand.grid(lon = lon, lat = lat, t = seq_along(year))
+grid$y   <- year[grid$t]
+grid$mon <- month[grid$t]
+grid$d   <- day[grid$t]
+grid$solar <- solar[grid$t]
+grid$cza <- cza[grid$t]
+grid$fdir <- fdir[grid$t]
+
+# call calc_solar_parameters() ---- takes about 10 minutes
+solar_params <- mapply(calc_solar_parameters,grid$y, grid$mon, grid$d,grid$lat, grid$lon, grid$solar, grid$cza, grid$fdir)
+
+# reshape back to 3-dimensional array
+ntime <- length(year)
+nlat <- length(lat)
+nlon <- length(lon)
+
+solarRet_array <- array(as.numeric(unlist(solar_params["solarRet", ])), dim = c(nlon, nlat, ntime))
+cza_array      <- array(as.numeric(unlist(solar_params["cza", ])), dim = c(nlon, nlat, ntime))
+fdir_array     <- array(as.numeric(unlist(solar_params["fdir", ])), dim = c(nlon, nlat, ntime))
+```
+
+```{r}
+# check that dimensions of fdir_array match dimensions of wbgt_inputs_aug_2019_new
+dim(ncvar_get(wbgt_inputs_aug_2019_new, "solar"))
+dim(fdir_array)  # longitude x latitude x time
+
+length(unique(fdir_array[!is.na(fdir_array)]))  # checking that there are different values
+
+summary(solarRet_array)
+summary(fdir_array)
+```
+
+```{r}
+# -----------crop solarRet_array to California shape
+
+solarRet_array_for_terra <- aperm(solarRet_array, c(2,1,3)) 
+# latitude x longitude x time ordering for terra
+r_solarRet <- rast(solarRet_array_for_terra) # convert array to raster
+ext(r_solarRet) <- c(min(lon), max(lon), min(lat), max(lat))
+crs(r_solarRet) <- "EPSG:4326"
+ca <- vect("urban 2019/ca_state/CA_State.shp")
+ca <- project(ca, crs(r_solarRet))
+r_solarRet_ca <- crop(r_solarRet, ca, snap="out")   # crop to bounding box
+r_solarRet_ca <- mask(r_solarRet_ca, ca)           # mask outside CA to NA
+
+
+# convert raster in the shape of CA back to array
+solarRet_array_ca <- as.array(r_solarRet_ca)
+solarRet_array_ca <- aperm(solarRet_array_ca, c(2,1,3)) # reorder back to longitude x latitude x time
+
+dim(solarRet_array_ca) # check dimensions of cropped array
+
+
+
+# -------------crop fdir_array to California shape
+
+fdir_array_for_terra <- aperm(fdir_array, c(2,1,3)) 
+# latitude x longitude x time ordering for terra
+r_fdir <- rast(fdir_array_for_terra) # convert array to raster
+ext(r_fdir) <- c(min(lon), max(lon), min(lat), max(lat))
+crs(r_fdir) <- "EPSG:4326"
+ca <- vect("urban 2019/ca_state/CA_State.shp")
+ca <- project(ca, crs(r_fdir))
+r_fdir_ca <- crop(r_fdir, ca, snap="out") # crop with whole grid cells on CA boundary
+r_fdir_ca <- mask(r_fdir_ca, ca)
+
+# convert raster in the shape of CA back to array
+fdir_array_ca <- as.array(r_fdir_ca)
+fdir_array_ca <- aperm(fdir_array_ca, c(2,1,3)) # reorder back to longitude x latitude x time
+
+dim(fdir_array_ca) # check dimensions of cropped array
+```
+
+```{r}
+# check that solarRet_array_ca is actually cropped to CA by plotting it
+
+times <- as.POSIXct(ncvar_get(wbgt_inputs_aug_2019_new, "valid_time"), origin = "1970-01-01", tz = "UTC")
+t_index <- which(times == as.POSIXct("2019-08-01 18:00", tz="UTC"))
+r_solarRet_ca <- rast(aperm(solarRet_array_ca, c(2,1,3)))
+ext(r_solarRet_ca) <- c(min(lon), max(lon), min(lat), max(lat))
+crs(r_solarRet_ca) <- "EPSG:4326"
+plot(r_solarRet_ca[[t_index]])
+title(main = paste("solarRet at", times[t_index]), line=3)
+
+
+# check that fdir_array_ca is actually cropped to CA by plotting it
+
+times <- as.POSIXct(ncvar_get(wbgt_inputs_aug_2019_new, "valid_time"), origin = "1970-01-01", tz = "UTC")
+t_index <- which(times == as.POSIXct("2019-08-01 18:00", tz="UTC"))
+r_fdir_ca <- rast(aperm(fdir_array_ca, c(2,1,3)))
+ext(r_fdir_ca) <- c(min(lon), max(lon), min(lat), max(lat))
+crs(r_fdir_ca) <- "EPSG:4326"
+plot(r_fdir_ca[[t_index]])
+title(main = paste("fdir at", times[t_index]), line=3)
+```
+
+
+
+
+```{r}
+# add solarRet_array_ca and fdir_array_ca to new dataset called wbgt_inputs_aug_2019_new2
+## === FIX
+
+library(ncdf4)
+
+nc_in <- nc_open("wbgt_inputs_aug_2019_new.nc")
+
+# define dimensions
+lon_dim <- nc_in$dim$longitude
+lat_dim <- nc_in$dim$latitude
+time_dim <- nc_in$dim$valid_time
+
+
+# Define new variables
+solarRet <- ncvar_def(name="solarRet", units = "W m**-2", 
+                      dim = list(lon_dim, lat_dim, time_dim), 
+                      missval = -9999, longname = "adjusted solar radiation", prec="float")
+fdir <- ncvar_def(name="fdir", units = "", 
+                          dim = list(lon_dim, lat_dim, time_dim), 
+                          missval = -9999, longname = "fraction of irradiance due to direct beam",
+                          prec = "float")
+
+# Create new NetCDF file
+nc_out <- nc_create("wbgt_inputs_aug_2019_new2.nc", vars = list(solarRet, fdir), force_v4 = TRUE)
+
+
+# Copy existing data
+for (varname in names(nc_in$var)) {
+  data <- ncvar_get(nc_in, varname)
+  old_var <- nc_in$var[[varname]]
+  
+  new_var <- ncvar_def(
+    name = old_var$name,
+    units = old_var$units,
+    dim = lapply(old_var$dim, function(d) d),
+    missval = ifelse(is.null(old_var$missval), -9999, old_var$missval),
+    longname = old_var$longname,
+    prec = old_var$prec
+  )
+  
+  # add variable to NetCDF
+  ncvar_obj <- ncvar_add(nc_out, new_var)
+  
+  # write data
+  ncvar_put(nc_out, ncvar_obj, data)
+}
+
+# Write new arrays
+ncvar_put(nc_out, "solarRet", solarRet_array_ca)
+ncvar_put(nc_out, "fdir",     fdir_array_ca)
+
+# Close files
+nc_close(nc_in)
+nc_close(nc_out)
+
+
+
+
 ```
 

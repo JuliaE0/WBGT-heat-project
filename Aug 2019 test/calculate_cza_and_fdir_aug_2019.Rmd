@@ -21,6 +21,7 @@ Hersbach, H., Bell, B., Berrisford, P., Biavati, G., Horányi, A., Muñoz Sabate
 ```{r}
 library(ncdf4)
 library(terra)
+library(reticulate)
 ```
 
 ```{r}
@@ -29,7 +30,11 @@ wbgt_inputs_aug_2019_new <- nc_open("wbgt_inputs_aug_2019_new.nc", write = TRUE)
 names(wbgt_inputs_aug_2019_new$var)
 dim(ncvar_get(wbgt_inputs_aug_2019_new, "solar"))
 # R shows dimensions as longitude x latitude x times
+
+# time units
+ncatt_get(wbgt_inputs_aug_2019_new, "valid_time", "units")
 ```
+
 
 ## Calculating "cza"
 
@@ -229,22 +234,6 @@ plot(r_fdir_ca[[t_index]])
 title(main = paste("fdir at", times[t_index]), line=3)
 ```
 
-```{r}
-####### NEED TO FIX SAVING TO THE FILE--- GOT WEIRD "" NAMES --- JUST CREATE A NEW FILE
-
-# make a copy of wbgt_inputs_aug_2019 and then add fdir to it
-
-```
-
-```{r}
-# check wbgt_inputs_aug_2019_new
-
-wbgt_inputs_aug_2019 <- nc_open("wbgt_inputs_aug_2019_new.nc")
-names(wbgt_inputs_aug_2019_new$var)
-dim(ncvar_get(wbgt_inputs_aug_2019_new, "cza"))
-# R shows dimensions as longitude x latitude x time
-```
-
 ## Calculating WBGT "fdir" input using calc_solar_parameters
 
 ```{r}
@@ -253,7 +242,7 @@ lat <- ncvar_get(wbgt_inputs_aug_2019_new, "latitude")
 lon <- ncvar_get(wbgt_inputs_aug_2019_new, "longitude")
 year  <- ncvar_get(wbgt_inputs_aug_2019_new, "year")
 month <- ncvar_get(wbgt_inputs_aug_2019_new, "month")
-day   <- ncvar_get(wbgt_inputs_aug_2019_new, "day")
+day   <- ncvar_get(wbgt_inputs_aug_2019_new, "dday")
 solar <- ncvar_get(wbgt_inputs_aug_2019_new, "solar")  # ERA5-Land ssrd in W/m2
 cza <- ncvar_get(wbgt_inputs_aug_2019_new, "cza")  # calculated from calc_cza_int()
 fdir <- ncvar_get(wbgt_inputs_aug_2019_new, "fdir_frac") # (NN-inter ERA5 fdir)/(ERA5-Land ssrd)
@@ -335,7 +324,9 @@ dim(fdir_array_ca) # check dimensions of cropped array
 ```{r}
 # check that solarRet_array_ca is actually cropped to CA by plotting it
 
-times <- as.POSIXct(ncvar_get(wbgt_inputs_aug_2019_new, "valid_time"), origin = "1970-01-01", tz = "UTC")
+times <- as.POSIXct(ncvar_get(wbgt_inputs_aug_2019_new, "valid_time") * 3600,
+  origin = "2019-08-01 00:00:00", tz = "UTC")
+
 t_index <- which(times == as.POSIXct("2019-08-01 18:00", tz="UTC"))
 r_solarRet_ca <- rast(aperm(solarRet_array_ca, c(2,1,3)))
 ext(r_solarRet_ca) <- c(min(lon), max(lon), min(lat), max(lat))
@@ -346,7 +337,6 @@ title(main = paste("solarRet at", times[t_index]), line=3)
 
 # check that fdir_array_ca is actually cropped to CA by plotting it
 
-times <- as.POSIXct(ncvar_get(wbgt_inputs_aug_2019_new, "valid_time"), origin = "1970-01-01", tz = "UTC")
 t_index <- which(times == as.POSIXct("2019-08-01 18:00", tz="UTC"))
 r_fdir_ca <- rast(aperm(fdir_array_ca, c(2,1,3)))
 ext(r_fdir_ca) <- c(min(lon), max(lon), min(lat), max(lat))
@@ -355,67 +345,82 @@ plot(r_fdir_ca[[t_index]])
 title(main = paste("fdir at", times[t_index]), line=3)
 ```
 
+```{r}
+#### create temporary file for fdir_array_ca
 
+# define dimensions
+dim_lon  <- ncdim_def("longitude","degrees_east",wbgt_inputs_aug_2019_new$dim$longitude$vals)
+dim_lat  <- ncdim_def("latitude","degrees_north",wbgt_inputs_aug_2019_new$dim$latitude$vals)
+dim_time <- ncdim_def("valid_time","hours since 2019-08-01",
+                      wbgt_inputs_aug_2019_new$dim$valid_time$vals)
+
+# define variable
+fdir <- ncvar_def(
+  name = "fdir",
+  units = "",   # no units because it's a ratio
+  dim = list(dim_lon, dim_lat, dim_time),
+  missval = -9999,
+  longname = "Fraction of irradiance due to direct beam (0-1)",
+  prec = "float"
+)
+
+# create temporary NetCDF with only new variable
+nc_temp <- nc_create("fdir_temp.nc", list(fdir))
+ncvar_put(nc_temp, "fdir", fdir_array_ca)
+nc_close(nc_temp)
+nc_close(wbgt_inputs_aug_2019_new)
+```
+
+```{python}
+# added fdir and save as new file
+
+import xarray as xr
+
+ds = xr.open_dataset("wbgt_inputs_aug_2019_new.nc")
+
+fdir_temp = xr.open_dataset("fdir_temp.nc")
+
+# add fdir variable to dataset
+ds["fdir"] = fdir_temp["fdir"]
+
+# save as a new file
+ds.to_netcdf("wbgt_inputs_aug_2019_added.nc")
+
+# close files
+ds.close()
+fdir_temp.close()
+```
 
 
 ```{r}
-# add solarRet_array_ca and fdir_array_ca to new dataset called wbgt_inputs_aug_2019_new2
-## === FIX
+# verify that it was added
 
-library(ncdf4)
-
-nc_in <- nc_open("wbgt_inputs_aug_2019_new.nc")
-
-# define dimensions
-lon_dim <- nc_in$dim$longitude
-lat_dim <- nc_in$dim$latitude
-time_dim <- nc_in$dim$valid_time
-
-
-# Define new variables
-solarRet <- ncvar_def(name="solarRet", units = "W m**-2", 
-                      dim = list(lon_dim, lat_dim, time_dim), 
-                      missval = -9999, longname = "adjusted solar radiation", prec="float")
-fdir <- ncvar_def(name="fdir", units = "", 
-                          dim = list(lon_dim, lat_dim, time_dim), 
-                          missval = -9999, longname = "fraction of irradiance due to direct beam",
-                          prec = "float")
-
-# Create new NetCDF file
-nc_out <- nc_create("wbgt_inputs_aug_2019_new2.nc", vars = list(solarRet, fdir), force_v4 = TRUE)
-
-
-# Copy existing data
-for (varname in names(nc_in$var)) {
-  data <- ncvar_get(nc_in, varname)
-  old_var <- nc_in$var[[varname]]
-  
-  new_var <- ncvar_def(
-    name = old_var$name,
-    units = old_var$units,
-    dim = lapply(old_var$dim, function(d) d),
-    missval = ifelse(is.null(old_var$missval), -9999, old_var$missval),
-    longname = old_var$longname,
-    prec = old_var$prec
-  )
-  
-  # add variable to NetCDF
-  ncvar_obj <- ncvar_add(nc_out, new_var)
-  
-  # write data
-  ncvar_put(nc_out, ncvar_obj, data)
-}
-
-# Write new arrays
-ncvar_put(nc_out, "solarRet", solarRet_array_ca)
-ncvar_put(nc_out, "fdir",     fdir_array_ca)
-
-# Close files
-nc_close(nc_in)
-nc_close(nc_out)
-
-
-
-
+nc <- nc_open("wbgt_inputs_aug_2019_added.nc")
+names(nc$var)         # should now include "fdir"
+dim(ncvar_get(nc, "fdir"))
+nc_close(nc)
 ```
+
+```{python}
+import matplotlib.pyplot as plt
+
+wbgt_inputs_aug_2019_added = xr.open_dataset("wbgt_inputs_aug_2019_added.nc")
+
+wbgt_inputs_aug_2019_added["fdir"].to_series().describe()
+
+da = wbgt_inputs_aug_2019_added["fdir"].sel(valid_time="2019-08-01T18:00")
+
+# Drop all coords except latitude and longitude
+da_clean = da.drop_vars([c for c in da.coords if c not in ["latitude", "longitude"]])
+
+# Plot cleaned data array
+import matplotlib.pyplot as plt
+plt.figure(figsize=(8,6))
+da_clean.plot()
+plt.title("fdir at 2019-08-01 18:00")
+plt.show()
+
+wbgt_inputs_aug_2019_added.close()
+```
+
 

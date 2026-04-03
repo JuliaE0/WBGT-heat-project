@@ -178,7 +178,7 @@ comparison <- ca_counties |> st_drop_geometry() |>
 # correlation and RMSE
 correlation <- cor(comparison$heatvars_WBGT_mean, comparison$calculated_WBGT_mean)
 paste("correlation coefficient: ", correlation)
-rmse <- sqrt(mean((comparison$heatvars_WBGT_mean - comparison$heatvars_WBGT_mean)^2))
+rmse <- sqrt(mean((comparison$calculated_WBGT_mean - comparison$heatvars_WBGT_mean)^2, na.rm=TRUE))
 paste("RMSE: ", rmse)
 
 # scatterplot

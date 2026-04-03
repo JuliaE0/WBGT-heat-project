@@ -22,35 +22,37 @@ library(parallel)
 
 ```{r}
 # open netCDF file of preprocessed input variables
-wbgt_inputs_aug_2019 <- nc_open("wbgt_inputs_aug_2019.nc")
-names(wbgt_inputs_aug_2019$var)
-dim(ncvar_get(wbgt_inputs_aug_2019, "fdir")) # R shows dimensions as longitude x latitude x time
+inputs <- nc_open("wbgt_inputs_aug_2019_added.nc")
+names(inputs$var)
+dim(ncvar_get(inputs, "fdir")) # R shows dimensions as longitude x latitude x time
 ```
 
 ```{r}
 # get inputs for heatmetrics WBGT function
 
-year  <- ncvar_get(wbgt_inputs_aug_2019, "year")  # dim = 744
-month <- ncvar_get(wbgt_inputs_aug_2019, "month") # dim = 744
-dday  <- ncvar_get(wbgt_inputs_aug_2019, "dday")  # dim = 744
-lat <- ncvar_get(wbgt_inputs_aug_2019, "latitude")  # dim = 96
-lon <- ncvar_get(wbgt_inputs_aug_2019, "longitude") # dim = 105
-solar  <- aperm(ncvar_get(wbgt_inputs_aug_2019, "solar"), c(3,2,1)) # dim = 744 x 96 x 105 for below variables
-cza    <- aperm(ncvar_get(wbgt_inputs_aug_2019, "cza"), c(3,2,1))
-fdir   <- aperm(ncvar_get(wbgt_inputs_aug_2019, "fdir"), c(3,2,1))
-pres   <- aperm(ncvar_get(wbgt_inputs_aug_2019, "pres"), c(3,2,1))
-Tair   <- aperm(ncvar_get(wbgt_inputs_aug_2019, "Tair"), c(3,2,1))
-relhum <- aperm(ncvar_get(wbgt_inputs_aug_2019, "relhum"), c(3,2,1))
-speed  <- aperm(ncvar_get(wbgt_inputs_aug_2019, "speed"), c(3,2,1))
+year  <- ncvar_get(inputs, "year")  # dim = 744
+month <- ncvar_get(inputs, "month") # dim = 744
+dday  <- ncvar_get(inputs, "dday")  # dim = 744
+lat <- ncvar_get(inputs, "latitude")  # dim = 96
+lon <- ncvar_get(inputs, "longitude") # dim = 105
+solar  <- aperm(ncvar_get(inputs, "solarRet"), c(3,2,1)) # dim = 744 x 96 x 105 for below variables
+cza    <- aperm(ncvar_get(inputs, "cza"), c(3,2,1))
+fdir   <- aperm(ncvar_get(inputs, "fdir"), c(3,2,1))
+pres   <- aperm(ncvar_get(inputs, "pres"), c(3,2,1))
+Tair   <- aperm(ncvar_get(inputs, "Tair"), c(3,2,1))
+relhum <- aperm(ncvar_get(inputs, "relhum"), c(3,2,1))
+speed  <- aperm(ncvar_get(inputs, "speed"), c(3,2,1))
 zspeed <- 10
 dT     <- -0.052
-urban  <- aperm(ncvar_get(wbgt_inputs_aug_2019, "urban"), c(3,2,1))
+urban  <- aperm(ncvar_get(inputs, "urban"), c(3,2,1))
 ```
 
 ```{r}
+##### IGNORE
+
 # heatmetrics WBGT function accepts scalar inputs
 
-# this worked, so try to expand on this idea
+# testing on one point this worked, so try to expand on this idea
 
 t <- 100
 i <- 50
@@ -76,7 +78,7 @@ wbgt_test <- wbgt(
 ```
 
 ```{r}
-# try with parallel processing, might be faster
+# parallel processing
 # took about 20 minutes
 
 grid_lat <- rep(lat, each = length(lon))
@@ -146,7 +148,6 @@ stopCluster(cl)
 for (t in seq_along(wbgt_list)) {
   wbgt_out[t,,] <- wbgt_list[[t]]
 }
-
 ```
 
 ```{r}
@@ -157,7 +158,7 @@ dim(wbgt_out)
 ```{r}
 # plot wbgt_out at a single timestep
 
-times <- as.POSIXct(ncvar_get(wbgt_inputs_aug_2019, "valid_time"), origin = "1970-01-01", tz = "UTC")
+times <- as.POSIXct(ncvar_get(inputs, "valid_time"), origin = "1970-01-01", tz = "UTC")
 t_index <- which(times == as.POSIXct("2019-08-01 18:00", tz="UTC"))
 wbgt_slice <- wbgt_out[t_index,,]
 r <- rast(wbgt_slice)
@@ -169,13 +170,13 @@ title(main = paste("WBGT at", times[t_index]), line=3)
 ```
 
 ```{r}
-# save wbgt_out as netCDF file -- TO DO, DIDN'T ACTUALLY RUN YET
+# save wbgt_out as netCDF file---------DELETE
 
 wbgt_out <- aperm(wbgt_out, c(3, 2, 1))
 
-lon_dim  <- wbgt_inputs_aug_2019$dim$longitude
-lat_dim  <- wbgt_inputs_aug_2019$dim$latitude
-time_dim <- wbgt_inputs_aug_2019$dim$valid_time
+lon_dim  <- inputs$dim$longitude
+lat_dim  <- inputs$dim$latitude
+time_dim <- inputs$dim$valid_time
 
 #lon_dim  <- ncdim_def("longitude",  "degrees_east",  lon)
 #lat_dim  <- ncdim_def("latitude",  "degrees_north", lat)
@@ -190,7 +191,7 @@ wbgt <- ncvar_def(
   prec = "float"
 )
 
-ncfile <- nc_create("wbgt_aug_2019.nc", vars = wbgt)
+ncfile <- nc_create("wbgt_aug_2019_new.nc", vars = wbgt)
 
 ncvar_put(ncfile, wbgt, wbgt_out)
 
@@ -198,10 +199,72 @@ nc_close(ncfile)
 ```
 
 ```{r}
-# open wbgt_aug_2019.nc to check
+# open wbgt_aug_2019_new.nc to check----------DELETE
 
-wbgt_aug_2019 <- nc_open("wbgt_aug_2019.nc")
-names(wbgt_aug_2019$var)
-dim(ncvar_get(wbgt_aug_2019, "wbgt")) # R shows dimensions as longitude x latitude x time
+wbgt_aug_2019_new <- nc_open("wbgt_aug_2019_new.nc")
+names(wbgt_aug_2019_new$var)
+dim(ncvar_get(wbgt_aug_2019_new, "wbgt")) # R shows dimensions as longitude x latitude x time
 ```
+
+
+
+
+
+
+```{r}
+# save wbgt_out as netCDF file ----THIS WORKED
+
+wbgt_out <- aperm(wbgt_out, c(3, 2, 1))
+
+lon_dim  <- ncdim_def("longitude",  "degrees_east",  lon)
+lat_dim  <- ncdim_def("latitude",  "degrees_north", lat)
+time_num <- as.numeric(times)
+time_dim <- ncdim_def("valid_time", "seconds since 1970-01-01", time_num)
+
+wbgt <- ncvar_def(
+  name = "wbgt",
+  units = "degrees_Celsius",
+  dim = list(lon_dim, lat_dim, time_dim),
+  missval = -9999,
+  longname = "Wet-bulb globe temperature",
+  prec = "float"
+)
+
+ncfile <- nc_create("wbgt_aug_2019_b.nc", wbgt)
+
+ncvar_put(ncfile, wbgt, wbgt_out)
+
+nc_close(ncfile)
+```
+
+```{r}
+# open wbgt_aug_2019_b.nc to check
+
+wbgt_aug_2019_b <- nc_open("wbgt_aug_2019_b.nc")
+names(wbgt_aug_2019_b$var)
+dim(ncvar_get(wbgt_aug_2019_b, "wbgt")) # R shows dimensions as longitude x latitude x time
+```
+```{r}
+# plot from the file to check (plot in CA time)
+
+times_utc <- as.POSIXct(
+  wbgt_aug_2019_b$dim$valid_time$vals,
+  origin = "1970-01-01",
+  tz = "UTC"
+)
+
+times_ca <- with_tz(times_utc, "America/Los_Angeles")
+
+# Choose a time (robust match)
+target_time <- as.POSIXct("2019-08-01 18:00", tz="America/Los_Angeles")
+t_index <- which.min(abs(times_ca - target_time))
+
+# Load raster directly
+r <- rast("wbgt_aug_2019_b.nc", subds = "wbgt")
+
+# Plot
+plot(r[[t_index]])
+title(main = paste("WBGT at", format(times_ca[t_index], "%Y-%m-%d %H:%M %Z")), line=3)
+```
+
 

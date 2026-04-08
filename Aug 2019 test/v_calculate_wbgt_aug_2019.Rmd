@@ -1,0 +1,51 @@
+---
+title: "v_calculate_wbgt_aug_2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, results='asis', message=FALSE, warning=FALSE, collapse=TRUE)
+```
+
+```{r}
+library(heatmetrics)
+ls("package:heatmetrics") # functions in the heatmetrics package
+```
+
+```{r}
+library(ncdf4)
+library(terra)
+library(reticulate)
+```
+
+```{r}
+# open and view preprocessed dataset
+inputs <- nc_open("wbgt_inputs_aug_2019_updated.nc", write = TRUE)
+names(inputs$var)
+dim(ncvar_get(inputs, "solar"))
+# R shows dimensions as longitude x latitude x times
+```
+
+```{r}
+source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_stab_srdt.R")
+source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_est_wind_speed.R")
+source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_esat.R")
+source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_emis_atm.R")
+source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_h_sphere_in_air.R")
+source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_Tglobe.R")
+source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_dew_point.R")
+source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_h_cylinder_in_air.R")
+
+
+# TO DO: vectorize Twb(), then wbgt()
+
+
+```
+
+
+
+
+
+
+
+

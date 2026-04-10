@@ -39,9 +39,6 @@ source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_dew_poi
 source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_h_cylinder_in_air.R")
 source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_Twb.R")
 source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_wbgt.R")
-
-# compare v_wbgt with heatmetrics wbgt function
-
 ```
 
 
@@ -123,6 +120,56 @@ title(main = paste("WBGT at", times[t_index]), line=3)
 ## compare this vectorized function's output with scalar function's output
 
 ```{r}
+# load saved output from scalar calculation
+nc <- nc_open("wbgt_aug_2019_b.nc", write = TRUE)
+names(nc$var)
+wbgt_s <- ncvar_get(nc, "wbgt")
+dim(wbgt_s)   # R shows dimensions as longitude x latitude x times
+nc_close(nc)
+
+# check that dimensions match
+wbgt_v <- aperm(wbgt_out, c(3, 2, 1))
+dim(wbgt_v)
+dim(wbgt_s)
+
+
+# correlation and RMSE over all grid points and time
+x <- as.vector(wbgt_s)
+y <- as.vector(wbgt_v)
+# Remove NA pairs
+valid <- complete.cases(x, y)
+x <- x[valid]
+y <- y[valid]
+# Correlation
+correlation <- cor(x, y)
+cat("correlation: ", correlation, "\n")
+# RMSE
+rmse <- sqrt(mean((x - y)^2))
+cat("RMSE: ", rmse, "\n")
+# bias
+bias <- mean(wbgt_v - wbgt_s, na.rm = TRUE)
+cat("bias: ", bias)  # vector version values are slightly lower
+
+
+
+# correlation and RMSE at each lat-lon point over time
+for (i in 1:nlon) {
+  for (j in 1:nlat) {
+    x <- wbgt_s[i, j, ]
+    y <- wbgt_v[i, j, ]
+    
+    if (all(is.na(x)) || all(is.na(y))) next
+    
+    valid <- complete.cases(x, y)
+    
+    if (sum(valid) > 2) {
+      cor_map[i, j] <- cor(x[valid], y[valid])
+      rmse_map[i, j] <- sqrt(mean((x[valid] - y[valid])^2))
+    }
+  }
+}
+
+# visualize correlation and rmse
 
 ```
 

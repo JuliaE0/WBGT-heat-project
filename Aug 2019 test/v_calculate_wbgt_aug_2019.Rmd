@@ -16,6 +16,7 @@ ls("package:heatmetrics") # functions in the heatmetrics package
 library(ncdf4)
 library(terra)
 library(reticulate)
+library(parallel)
 ```
 
 ```{r}
@@ -27,6 +28,7 @@ dim(ncvar_get(inputs, "solar"))
 ```
 
 ```{r}
+source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_calc_solar_parameters.R")
 source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_stab_srdt.R")
 source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_est_wind_speed.R")
 source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_esat.R")
@@ -35,16 +37,94 @@ source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_h_spher
 source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_Tglobe.R")
 source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_dew_point.R")
 source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_h_cylinder_in_air.R")
+source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_Twb.R")
+source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_wbgt.R")
 
-
-# TO DO: vectorize Twb(), then wbgt()
-
+# compare v_wbgt with heatmetrics wbgt function
 
 ```
 
 
+## calculate wbgt with vectorized function
+
+```{r}
+# get inputs for WBGT function
+
+year  <- ncvar_get(inputs, "year")  # dim = 744
+month <- ncvar_get(inputs, "month") # dim = 744
+dday  <- ncvar_get(inputs, "dday")  # dim = 744
+lat <- ncvar_get(inputs, "latitude")  # dim = 96
+lon <- ncvar_get(inputs, "longitude") # dim = 105
+solar  <- aperm(ncvar_get(inputs, "solarRet"), c(3,2,1)) # dim = 744 x 96 x 105 for below variables
+cza    <- aperm(ncvar_get(inputs, "cza"), c(3,2,1))
+fdir   <- aperm(ncvar_get(inputs, "fdir"), c(3,2,1))
+pres   <- aperm(ncvar_get(inputs, "pres"), c(3,2,1))
+Tair   <- aperm(ncvar_get(inputs, "Tair"), c(3,2,1))
+relhum <- aperm(ncvar_get(inputs, "relhum"), c(3,2,1))
+speed  <- aperm(ncvar_get(inputs, "speed"), c(3,2,1))
+zspeed <- 10
+dT     <- -0.052
+urban  <- aperm(ncvar_get(inputs, "urban"), c(3,2,1))
+```
+
+```{r}
+# --- precompute grids ---
+nlat <- length(lat)
+nlon <- length(lon)
+ntime <- dim(solar)[1]
+
+lat_mat <- matrix(lat, nrow = nlat, ncol = nlon)
+lon_mat <- matrix(lon, nrow = nlat, ncol = nlon, byrow = TRUE)
+
+# --- output array ---
+wbgt_out <- array(NA_real_, dim = dim(solar))
+
+# --- loop over time ---
+system.time({
+for (t in 1:ntime) {
+
+  # expand time variables
+  year_mat  <- matrix(year[t],  nlat, nlon)
+  month_mat <- matrix(month[t], nlat, nlon)
+  dday_mat  <- matrix(dday[t],  nlat, nlon)
+
+  # call vectorized WBGT
+  wbgt_out[t,,] <- v_wbgt(
+    year_mat, month_mat, dday_mat,
+    lat_mat, lon_mat,
+    solar[t,,], cza[t,,], fdir[t,,],
+    pres[t,,], Tair[t,,], relhum[t,,],
+    speed[t,,], zspeed, dT, urban[t,,]
+  )}
+})
+```
 
 
+```{r}
+summary(wbgt_out)  # NA's should just be the grid cells outside the shape of California
+dim(wbgt_out)
+```
+
+```{r}
+# plot wbgt_out at a single timestep
+
+times <- as.POSIXct(ncvar_get(inputs, "valid_time"), origin = "1970-01-01", tz = "UTC")
+t_index <- which(times == as.POSIXct("2019-08-01 18:00", tz="UTC"))
+wbgt_slice <- wbgt_out[t_index,,]
+r <- rast(wbgt_slice)
+ext(r) <- c(min(lon), max(lon), min(lat), max(lat))
+crs(r) <- "EPSG:4326"
+if (lat[1] < lat[length(lat)]) r <- flip(r, "vertical")
+plot(r)
+title(main = paste("WBGT at", times[t_index]), line=3)
+```
+
+
+## compare this vectorized function's output with scalar function's output
+
+```{r}
+
+```
 
 
 

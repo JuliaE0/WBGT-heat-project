@@ -175,7 +175,7 @@ dim_lat  <- ncdim_def("latitude","degrees_north",wbgt_inputs_aug_2019_new$dim$la
 dim_time <- ncdim_def("valid_time","seconds since 1970-01-01",
                       wbgt_inputs_aug_2019_new$dim$valid_time$vals)
 
-# define variables ----- CONTINUE FROM HERE
+# define variables
 
 v_cza <- ncvar_def(
   name = "v_cza",

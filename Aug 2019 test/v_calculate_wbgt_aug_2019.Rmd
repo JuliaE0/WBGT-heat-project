@@ -52,9 +52,9 @@ month <- ncvar_get(inputs, "month") # dim = 744
 dday  <- ncvar_get(inputs, "dday")  # dim = 744
 lat <- ncvar_get(inputs, "latitude")  # dim = 96
 lon <- ncvar_get(inputs, "longitude") # dim = 105
-solar  <- aperm(ncvar_get(inputs, "solarRet"), c(3,2,1)) # dim = 744 x 96 x 105 for below variables
-cza    <- aperm(ncvar_get(inputs, "cza"), c(3,2,1))
-fdir   <- aperm(ncvar_get(inputs, "fdir"), c(3,2,1))
+solar  <- aperm(ncvar_get(inputs, "v_solarRet"), c(3,2,1)) # dim = 744 x 96 x 105 for below variables
+cza    <- aperm(ncvar_get(inputs, "v_cza"), c(3,2,1))
+fdir   <- aperm(ncvar_get(inputs, "v_fdir"), c(3,2,1))
 pres   <- aperm(ncvar_get(inputs, "pres"), c(3,2,1))
 Tair   <- aperm(ncvar_get(inputs, "Tair"), c(3,2,1))
 relhum <- aperm(ncvar_get(inputs, "relhum"), c(3,2,1))
@@ -76,7 +76,7 @@ lon_mat <- matrix(lon, nrow = nlat, ncol = nlon, byrow = TRUE)
 # --- output array ---
 wbgt_out <- array(NA_real_, dim = dim(solar))
 
-# --- loop over time ---
+# --- loop calculation over time ---
 system.time({
 for (t in 1:ntime) {
 
@@ -153,6 +153,8 @@ cat("bias: ", bias)  # vector version values are slightly lower
 
 
 # correlation and RMSE at each lat-lon point over time
+cor_map  <- matrix(NA, nrow = nlon, ncol = nlat)
+rmse_map <- matrix(NA, nrow = nlon, ncol = nlat)
 for (i in 1:nlon) {
   for (j in 1:nlat) {
     x <- wbgt_s[i, j, ]
@@ -168,8 +170,6 @@ for (i in 1:nlon) {
     }
   }
 }
-
-# visualize correlation and rmse
 
 ```
 

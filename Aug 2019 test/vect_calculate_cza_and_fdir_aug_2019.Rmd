@@ -32,6 +32,14 @@ dim(ncvar_get(wbgt_inputs_aug_2019_new, "solar"))
 source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_calc_cza.R")
 source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_calc_cza_int.R")
 
+# get inputs
+lat <- ncvar_get(wbgt_inputs_aug_2019_new, "latitude")
+lon <- ncvar_get(wbgt_inputs_aug_2019_new, "longitude")
+year  <- ncvar_get(wbgt_inputs_aug_2019_new, "year")
+month <- ncvar_get(wbgt_inputs_aug_2019_new, "month")
+day   <- ncvar_get(wbgt_inputs_aug_2019_new, "day")
+hour  <- ncvar_get(wbgt_inputs_aug_2019_new, "hour")
+
 # make grid
 lon_grid <- matrix(rep(lon, each = length(lat)), nrow = length(lat))
 lat_grid <- matrix(rep(lat, times = length(lon)), nrow = length(lat))
@@ -42,14 +50,6 @@ nlat  <- length(lat)
 nlon  <- length(lon)
 
 v_cza_array <- array(NA, dim = c(nlat, nlon, ntime))
-
-# get inputs
-lat <- ncvar_get(wbgt_inputs_aug_2019_new, "latitude")
-lon <- ncvar_get(wbgt_inputs_aug_2019_new, "longitude")
-year  <- ncvar_get(wbgt_inputs_aug_2019_new, "year")
-month <- ncvar_get(wbgt_inputs_aug_2019_new, "month")
-day   <- ncvar_get(wbgt_inputs_aug_2019_new, "day")
-hour  <- ncvar_get(wbgt_inputs_aug_2019_new, "hour")
 
 # apply function over time (vectorized function takes grid input and outputs a grid of values)
 cza_list <- lapply(seq_len(ntime), function(t) {
@@ -96,7 +96,6 @@ lon <- ncvar_get(wbgt_inputs_aug_2019_new, "longitude")
 year  <- ncvar_get(wbgt_inputs_aug_2019_new, "year")
 month <- ncvar_get(wbgt_inputs_aug_2019_new, "month")
 day   <- ncvar_get(wbgt_inputs_aug_2019_new, "dday")
-hour <- ncvar_get(wbgt_inputs_aug_2019_new, "hour")
 solar <- ncvar_get(wbgt_inputs_aug_2019_new, "ssrd_hr_W")  # hourly ERA5-Land ssrd in W/m2
 cza <- ncvar_get(wbgt_inputs_aug_2019_new, "cza")  # calculated from calc_cza_int()
 fdir <- ncvar_get(wbgt_inputs_aug_2019_new, "fdir_frac") # (NN-inter ERA5 fdir)/(hourly ERA5-Land ssrd)
@@ -121,7 +120,6 @@ solar_params_list <- lapply(seq_len(ntime), function(t) {
     year  = year[t],
     month = month[t],
     day   = day[t],
-    hour  = hour[t],
     lat   = lat_grid,
     lon   = lon_grid,
     solar = solar[,,t],
@@ -161,6 +159,78 @@ ext(r_fdir) <- c(min(lon), max(lon), min(lat), max(lat))
 crs(r_fdir) <- "EPSG:4326"
 plot(r_fdir[[t_index]])
 title(main = paste("fdir at", times[t_index]), line=3)
+```
+
+
+## compare vectorized function outputs with scalar function outputs
+
+```{r}
+nc = nc_open("wbgt_inputs_aug_2019_added.nc")  # has cza, fdir, solarRet from scalar version
+names(nc$var)
+dim(ncvar_get(nc, "solar"))
+
+cza <- ncvar_get(nc, "cza")
+fdir <- ncvar_get(nc, "fdir")
+solarRet <- ncvar_get(nc, "solarRet")
+
+options(digits = 10)
+summary(cza)
+summary(fdir)
+summary(solarRet)
+
+
+# correlation and RMSE over all grid points and time --- comparing solarRet
+x <- as.vector(solarRet)
+y <- as.vector(v_solarRet_array)
+# Remove NA pairs
+valid <- complete.cases(x, y)
+x <- x[valid]
+y <- y[valid]
+# Correlation
+correlation <- cor(x, y)
+cat("solarRet correlation: ", correlation, "\n")
+# RMSE
+rmse <- sqrt(mean((x - y)^2))
+cat("solarRet RMSE: ", rmse, "\n")
+# bias
+bias <- mean(v_solarRet_array - solarRet, na.rm = TRUE)
+cat("solarRet bias: ", bias, "\n")  # vectorized function outputs are smaller
+
+
+# correlation and RMSE over all grid points and time --- comparing fdir
+x <- as.vector(fdir)
+y <- as.vector(v_fdir_array)
+# Remove NA pairs
+valid <- complete.cases(x, y)
+x <- x[valid]
+y <- y[valid]
+# Correlation
+correlation <- cor(x, y)
+cat("fdir correlation: ", correlation, "\n")
+# RMSE
+rmse <- sqrt(mean((x - y)^2))
+cat("fdir RMSE: ", rmse, "\n")
+# bias
+bias <- mean(v_fdir_array - fdir, na.rm = TRUE)
+cat("fdir bias: ", bias, "\n")
+
+
+# correlation and RMSE over all grid points and time --- comparing cza
+x <- as.vector(cza)
+y <- as.vector(v_cza_array)
+# Remove NA pairs
+valid <- complete.cases(x, y)
+x <- x[valid]
+y <- y[valid]
+# Correlation
+correlation <- cor(x, y)
+cat("cza correlation: ", correlation, "\n")
+# RMSE
+rmse <- sqrt(mean((x - y)^2))
+cat("cza RMSE: ", rmse, "\n")
+# bias
+bias <- mean(v_cza_array - cza, na.rm = TRUE)
+cat("cza bias: ", bias, "\n")
 ```
 
 
@@ -225,7 +295,7 @@ ds = xr.open_dataset("wbgt_inputs_aug_2019_added.nc")
 
 temp = xr.open_dataset("temp2.nc")
 
-# add fdir variable to dataset ----- FIX
+# add fdir variable to dataset
 ds["v_cza"] = temp["v_cza"]
 ds["v_fdir"] = temp["v_fdir"]
 ds["v_solarRet"] = temp["v_solarRet"]

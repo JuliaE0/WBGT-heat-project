@@ -1,0 +1,309 @@
+---
+title: "v_calculate_wbgt_aug_2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, results='asis', message=FALSE, warning=FALSE, collapse=TRUE)
+```
+
+```{r}
+library(heatmetrics)
+ls("package:heatmetrics") # functions in the heatmetrics package
+```
+
+```{r}
+library(ncdf4)
+library(terra)
+library(reticulate)
+library(parallel)
+```
+
+```{r}
+# open and view preprocessed dataset
+inputs <- nc_open("wbgt_inputs_aug_2019_updated.nc")
+names(inputs$var)
+dim(ncvar_get(inputs, "ssrd_W"))
+# R shows dimensions as longitude x latitude x times
+```
+
+```{r}
+source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_calc_solar_parameters.R")
+source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_stab_srdt.R")
+source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_est_wind_speed.R")
+source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_esat.R")
+source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_emis_atm.R")
+source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_h_sphere_in_air.R")
+source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_Tglobe.R")
+source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_dew_point.R")
+source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_h_cylinder_in_air.R")
+source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_Twb.R")
+source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_wbgt.R")
+```
+
+
+## calculate wbgt with vectorized function
+
+```{r}
+# get inputs for WBGT function
+
+year  <- ncvar_get(inputs, "year")  # dim = 744
+month <- ncvar_get(inputs, "month") # dim = 744
+dday  <- ncvar_get(inputs, "dday")  # dim = 744
+lat <- ncvar_get(inputs, "latitude")  # dim = 96
+lon <- ncvar_get(inputs, "longitude") # dim = 105
+solar  <- aperm(ncvar_get(inputs, "v_solarRet"), c(3,2,1)) # dim = 744 x 96 x 105 for below variables
+cza    <- aperm(ncvar_get(inputs, "v_cza"), c(3,2,1))
+fdir   <- aperm(ncvar_get(inputs, "v_fdir"), c(3,2,1))
+pres   <- aperm(ncvar_get(inputs, "pres"), c(3,2,1))
+Tair   <- aperm(ncvar_get(inputs, "Tair"), c(3,2,1))
+relhum <- aperm(ncvar_get(inputs, "relhum"), c(3,2,1))
+speed  <- aperm(ncvar_get(inputs, "speed"), c(3,2,1))
+zspeed <- 10
+dT     <- -0.052
+urban  <- aperm(ncvar_get(inputs, "urban"), c(3,2,1))
+```
+
+Calculate with new fdir
+```{r}
+# --- precompute grids ---
+nlat <- length(lat)
+nlon <- length(lon)
+ntime <- dim(solar)[1]
+
+lat_mat <- matrix(lat, nrow = nlat, ncol = nlon)
+lon_mat <- matrix(lon, nrow = nlat, ncol = nlon, byrow = TRUE)
+
+# --- output array ---
+wbgt_out <- array(NA_real_, dim = dim(solar))
+
+# --- loop calculation over time ---
+system.time({
+for (t in 1:ntime) {
+
+  # expand time variables
+  year_mat  <- matrix(year[t],  nlat, nlon)
+  month_mat <- matrix(month[t], nlat, nlon)
+  dday_mat  <- matrix(dday[t],  nlat, nlon)
+
+  # call vectorized WBGT
+  wbgt_out[t,,] <- v_wbgt(
+    year_mat, month_mat, dday_mat,
+    lat_mat, lon_mat,
+    solar[t,,], cza[t,,], fdir[t,,],
+    pres[t,,], Tair[t,,], relhum[t,,],
+    speed[t,,], zspeed, dT, urban[t,,]
+  )}
+})
+```
+
+```{r}
+# crop to California shape
+
+times <- as.POSIXct(ncvar_get(inputs, "valid_time"), origin = "1970-01-01", tz = "UTC")
+wbgt_for_terra <- aperm(wbgt_out, c(2, 3, 1))
+r_wbgt <- rast(wbgt_for_terra)
+ext(r_wbgt) <- c(min(lon), max(lon), min(lat), max(lat))
+crs(r_wbgt) <- "EPSG:4326"
+
+# fix orientation if needed
+#if (lat[1] < lat[length(lat)]) {
+#  r_wbgt <- flip(r_wbgt, "vertical")
+#}
+
+ca_shape <- vect("ca_grid/ERA5_Land_grid_CAfull.shp")
+ca_shape <- project(ca_shape, crs(r_wbgt))
+
+r_wbgt <- crop(r_wbgt, ca_shape, snap="out")
+r_wbgt_ca <- mask(r_wbgt, ca_shape)
+
+#r_wbgt_ca <- crop(r_wbgt, ca_shape)
+#r_wbgt_ca <- mask(r_wbgt_ca, ca_shape)
+
+vals <- terra::values(r_wbgt_ca, mat = TRUE)
+
+nrow_ca <- nrow(r_wbgt_ca)
+ncol_ca <- ncol(r_wbgt_ca)
+ntime <- nlyr(r_wbgt_ca)
+
+# rebuild array in terra order: (lat × lon × time)
+wbgt_ca <- array(vals, dim = c(ncol_ca, nrow_ca, ntime))
+
+# convert back to original format: time × lat × lon
+wbgt_ca <- aperm(wbgt_ca, c(3, 2, 1))
+```
+
+```{r}
+summary(wbgt_ca)  # NA's should just be the grid cells outside the shape of California
+dim(wbgt_ca)
+```
+
+```{r}
+# plot wbgt_out at a single timestep
+
+times <- as.POSIXct(ncvar_get(inputs, "valid_time"), origin = "1970-01-01", tz = "UTC")
+t_index <- which(times == as.POSIXct("2019-08-01 18:00", tz="UTC"))
+wbgt_slice <- wbgt_ca[t_index,,]
+r <- rast(wbgt_slice)
+ext(r) <- c(min(lon), max(lon), min(lat), max(lat))
+crs(r) <- "EPSG:4326"
+if (lat[1] < lat[length(lat)]) r <- flip(r, "vertical")
+plot(r)
+title(main = paste("WBGT at", times[t_index]), line=3)
+```
+
+
+## compare this WBGT output with previous WBGT
+
+Calculate with old fdir
+```{r}
+# open and view preprocessed dataset
+inputs_old <- nc_open("wbgt_inputs_aug_2019_old.nc") ## change dataset
+names(inputs_old$var)
+dim(ncvar_get(inputs_old, "solar"))
+# R shows dimensions as longitude x latitude x times
+```
+
+```{r}
+# get inputs for WBGT function
+
+year  <- ncvar_get(inputs_old, "year")  # dim = 744
+month <- ncvar_get(inputs_old, "month") # dim = 744
+dday  <- ncvar_get(inputs_old, "dday")  # dim = 744
+lat <- ncvar_get(inputs_old, "latitude")  # dim = 96
+lon <- ncvar_get(inputs_old, "longitude") # dim = 105
+solar  <- aperm(ncvar_get(inputs_old, "v_solarRet"), c(3,2,1)) # dim = 744 x 96 x 105 for below
+cza    <- aperm(ncvar_get(inputs_old, "v_cza"), c(3,2,1))
+fdir   <- aperm(ncvar_get(inputs_old, "v_fdir"), c(3,2,1))
+pres   <- aperm(ncvar_get(inputs_old, "pres"), c(3,2,1))
+Tair   <- aperm(ncvar_get(inputs_old, "Tair"), c(3,2,1))
+relhum <- aperm(ncvar_get(inputs_old, "relhum"), c(3,2,1))
+speed  <- aperm(ncvar_get(inputs_old, "speed"), c(3,2,1))
+zspeed <- 10
+dT     <- -0.052
+urban  <- aperm(ncvar_get(inputs_old, "urban"), c(3,2,1))
+```
+
+```{r}
+# --- precompute grids ---
+nlat <- length(lat)
+nlon <- length(lon)
+ntime <- dim(solar)[1]
+
+lat_mat <- matrix(lat, nrow = nlat, ncol = nlon)
+lon_mat <- matrix(lon, nrow = nlat, ncol = nlon, byrow = TRUE)
+
+# --- output array ---
+wbgt_out_old <- array(NA_real_, dim = dim(solar))
+
+# --- loop calculation over time ---
+system.time({
+for (t in 1:ntime) {
+
+  # expand time variables
+  year_mat  <- matrix(year[t],  nlat, nlon)
+  month_mat <- matrix(month[t], nlat, nlon)
+  dday_mat  <- matrix(dday[t],  nlat, nlon)
+
+  # call vectorized WBGT
+  wbgt_out_old[t,,] <- v_wbgt(
+    year_mat, month_mat, dday_mat,
+    lat_mat, lon_mat,
+    solar[t,,], cza[t,,], fdir[t,,],
+    pres[t,,], Tair[t,,], relhum[t,,],
+    speed[t,,], zspeed, dT, urban[t,,]
+  )}
+})
+```
+
+```{r}
+summary(wbgt_out_old)  # NA's should just be the grid cells outside the shape of California
+dim(wbgt_out_old)
+```
+
+Comparisons
+```{r}
+# save wbgt_ca and wbgt_out_old to a file
+
+# define dimensions
+dim_lon  <- ncdim_def("longitude","degrees_east",wbgt_inputs_aug_2019$dim$longitude$vals)
+dim_lat  <- ncdim_def("latitude","degrees_north",wbgt_inputs_aug_2019$dim$latitude$vals)
+dim_time <- ncdim_def("valid_time","seconds since 1970-01-01",
+                      wbgt_inputs_aug_2019$dim$valid_time$vals)
+
+# define variables
+
+wbgt_new <- ncvar_def(
+  name = "wbgt_new",
+  units = "degrees_Celsius",
+  dim = list(dim_lon, dim_lat, dim_time),
+  missval = -9999,
+  longname = "Wet-bulb globe temperature",
+  prec = "float")
+wbgt_old <- ncvar_def(
+  name = "wbgt_old",
+  units = "degrees_Celsius", 
+  dim = list(dim_lon, dim_lat, dim_time),
+  missval = -9999,
+  longname = "Wet-bulb globe temperature",
+  prec = "float")
+
+
+# create NetCDF with wbgt_new and wbgt_old
+wbgt_outputs <- nc_create("wbgt_outputs.nc", list(wbgt_new, wbgt_old))
+ncvar_put(wbgt_outputs, "wbgt_new", wbgt_ca)
+ncvar_put(wbgt_outputs, "wbgt_old", wbgt_out_old)
+nc_close(wbgt_outputs)
+nc_close(wbgt_inputs_aug_2019)
+```
+
+```{r}
+# open wbgt_outputs.nc
+wbgt_outputs <- nc_open("wbgt_outputs.nc") ## change dataset
+names(wbgt_outputs$var)
+
+# summary of values of wbgt_new
+wbgt_new <- ncvar_get(wbgt_outputs, "wbgt_new")
+summary(wbgt_new)  # NA's should just be the grid cells outside the shape of California
+dim(wbgt_new)
+
+# summary of values of wbgt_old
+wbgt_old <- ncvar_get(wbgt_outputs, "wbgt_old")
+summary(wbgt_old)  # NA's should just be the grid cells outside the shape of California
+dim(wbgt_old)
+```
+
+```{r}
+# compare wbgt_new with wbgt_old
+# correlation and RMSE over all grid points and time
+x <- as.vector(wbgt_new)
+y <- as.vector(wbgt_old)
+# Remove NA pairs
+valid <- complete.cases(x, y)
+x <- x[valid]
+y <- y[valid]
+# Correlation
+correlation <- cor(x, y)
+cat("correlation: ", correlation, "\n")
+# RMSE
+rmse <- sqrt(mean((x - y)^2))
+cat("RMSE: ", rmse, "\n")
+# bias
+bias <- mean(wbgt_old - wbgt_new, na.rm = TRUE)
+cat("bias: ", bias)
+```
+
+```{r}
+# compare wbgt_new with Spangler's (county-level comparison)
+
+```
+
+
+
+
+
+
+
+
+
+

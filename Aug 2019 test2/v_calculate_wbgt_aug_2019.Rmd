@@ -162,6 +162,141 @@ plot(r)
 title(main = paste("WBGT at", times[t_index]), line=3)
 ```
 
+## compare with Spangler's
+
+```{r}
+# load heatmetrics data (from Spangler et al.)
+heatvars <- readRDS("UNWEIGHTED_Heatvars_County_2000-2020_v1.2.Rds")
+
+# select August 2019 from heatmetrics data
+heatvars_aug_2019 <- subset(heatvars, Date >= "2019-08-01" & Date <= "2019-08-31")
+```
+
+```{r}
+# plot heatmetrics WBGTmean_C variables for a Aug 1, 2019
+
+heatvars_aug_1_2019 <- subset(heatvars, Date == "2019-08-01")
+
+counties_sf <- counties(cb = TRUE, year = 2020) %>%  st_as_sf()
+map_data <- counties_sf %>% left_join(heatvars_aug_1_2019, by = c("GEOID" = "StCoFIPS"))
+ca_map <- map_data %>% filter(STATEFP == "06")  # plot only California
+	
+# Wet-bulb globe temperature (WBGT) averaged over hourly observations from 00 LST to 23 LST
+ggplot(ca_map) + geom_sf(aes(fill = WBGTmean_C), color = NA) + 
+  scale_fill_viridis_c(name = "mean WBGT (C)") + theme_minimal() +
+  labs(title = "Mean WBGT by County", subtitle = "August 1, 2019")
+```
+```{r}
+# plot county-level WBGT for Aug 1, 2019
+
+# calculate the daily mean for each grid cell and then calculated the county-level mean by overlaying the county shape file
+
+times_utc <- as.POSIXct(ncvar_get(inputs, "valid_time"), origin = "1970-01-01", tz = "UTC")
+times_ca <- with_tz(times_utc, "America/Los_Angeles")
+day_index <- which(as.Date(times_ca) == as.Date("2019-08-01"))
+
+
+### daily mean for new WBGT
+wbgt_ca_for_plot <- aperm(wbgt_ca, c(2, 3, 1))
+
+r <- rast(wbgt_ca_for_plot)
+ext(r) <- c(min(lon), max(lon), min(lat), max(lat))
+crs(r) <- "EPSG:4326"
+
+r_day <- mean(r[[day_index]], na.rm = TRUE)  # compute daily mean per grid cell
+
+ca_counties <- counties(state = "CA", cb = TRUE, year = 2020) %>%  st_as_sf()
+ca_counties <- st_transform(ca_counties, crs(r_day))  # make CRS of ca_counties match CRS of r_day
+
+county_means <- terra::extract(r_day, vect(ca_counties), fun = mean, 
+                               weights = TRUE, na.rm = TRUE)
+
+ca_counties$WBGT_mean <- county_means[,2]
+
+
+# plot
+ggplot(ca_counties) +
+  geom_sf(aes(fill = WBGT_mean), color=NA) +
+  scale_fill_viridis_c(name = "Daily Mean WBGT (°C)") +
+  theme_minimal() +
+  labs(title = "County-Level Daily Mean WBGT", subtitle = "2019-08-01")
+```
+
+```{r}
+# plot county-level means with same color scale to compare with Spangler's
+
+common_limits <- range(c(ca_map$WBGTmean_C, ca_counties$WBGT_mean))
+
+# from heatvars
+ggplot(ca_map) + 
+  geom_sf(aes(fill = WBGTmean_C), color = NA) + 
+  scale_fill_viridis_c(name = "mean WBGT (C)", limits = common_limits) +
+  theme_minimal() + labs(title = "Mean WBGT by County (Spangler)", subtitle = "August 1, 2019")
+
+# from vectorized WBGT calculation
+ggplot(ca_counties) +
+  geom_sf(aes(fill = WBGT_mean), color = NA) +
+  scale_fill_viridis_c(name = "Daily Mean WBGT (°C)", limits = common_limits) +
+  theme_minimal() +  labs(title = "New County-Level Daily Mean WBGT", subtitle = "2019-08-01")
+
+
+# how much they differ (WBGT compared to Spangler's)
+library(dplyr)
+
+comparison <- ca_counties %>%
+  st_drop_geometry() %>%
+  dplyr::select(GEOID, WBGT_mean) %>%
+  left_join(
+    ca_map %>%
+      st_drop_geometry() %>%
+      dplyr::select(GEOID, WBGTmean_C),
+    by = "GEOID")
+
+comparison <- comparison %>%
+  mutate(diff_C = WBGT_mean - WBGTmean_C)
+
+summary(comparison$diff_C)
+
+ggplot(comparison, aes(x = WBGTmean_C, y = WBGT_mean)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed") +
+  geom_smooth(method = "lm", color = "blue") +
+  theme_minimal() +
+  labs(
+    x = "Spangler WBGT",
+    y = "calculated WBGT",
+    title = "Comparison of County WBGT Values",
+    subtitle = "Red = 1:1 line, Blue = regression")
+
+
+
+
+##### correlation
+
+ca_map <- st_transform(ca_map, crs(ca_counties))  # make CRS of ca_map match CRS of ca_counties
+
+# comparing WBGT county-level mean for Aug 1, 2019
+comparison <- ca_counties |> st_drop_geometry() |>
+  dplyr::select(GEOID, calculated_WBGT_mean = WBGT_mean) |>
+  dplyr::left_join(
+    ca_map |>  st_drop_geometry() |>
+      dplyr::select(GEOID, heatvars_WBGT_mean = WBGTmean_C), by = "GEOID")
+
+# correlation and RMSE
+correlation <- cor(comparison$heatvars_WBGT_mean, comparison$calculated_WBGT_mean)
+paste("correlation coefficient: ", correlation)
+rmse <- sqrt(mean((comparison$calculated_WBGT_mean - comparison$heatvars_WBGT_mean)^2, na.rm=TRUE))
+paste("RMSE: ", rmse)
+# bias
+bias <- mean(comparison$calculated_WBGT_mean - comparison$heatvars_WBGT_mean, na.rm = TRUE)
+paste("bias: ", bias)
+```
+
+
+
+
+
+
 
 ## compare this WBGT output with previous WBGT
 

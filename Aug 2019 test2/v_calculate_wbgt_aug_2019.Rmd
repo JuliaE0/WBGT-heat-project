@@ -8,8 +8,8 @@ knitr::opts_chunk$set(echo=TRUE, results='asis', message=FALSE, warning=FALSE, c
 ```
 
 ```{r}
-library(heatmetrics)
-ls("package:heatmetrics") # functions in the heatmetrics package
+# library(heatmetrics)
+# ls("package:heatmetrics") # functions in the heatmetrics package
 ```
 
 ```{r}
@@ -45,6 +45,10 @@ source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_dew_poi
 source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_h_cylinder_in_air.R")
 source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_Twb.R")
 source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_wbgt.R")
+source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/viscosity.R")
+source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/thermal_cond.R")
+source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/diffusivity.R")
+source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/evap.R")
 ```
 
 
@@ -70,7 +74,7 @@ dT     <- -0.052
 urban  <- aperm(ncvar_get(inputs, "urban"), c(3,2,1))
 ```
 
-Calculate with new fdir
+Calculate WBGT with new fdir
 ```{r}
 # --- precompute grids ---
 nlat <- length(lat)
@@ -102,6 +106,26 @@ for (t in 1:ntime) {
   )}
 })
 ```
+
+
+```{r}
+
+t = 19
+
+# expand time variables
+year_mat  <- matrix(year[t],  nlat, nlon)
+month_mat <- matrix(month[t], nlat, nlon)
+dday_mat  <- matrix(dday[t],  nlat, nlon)
+
+# call vectorized WBGT
+wbgt_out[t,,] <- v_wbgt(
+  year_mat, month_mat, dday_mat,
+  lat_mat, lon_mat,
+  solar[t,,], cza[t,,], fdir[t,,],
+  pres[t,,], Tair[t,,], relhum[t,,],
+  speed[t,,], zspeed, dT, urban[t,,])
+```
+
 
 ```{r}
 # crop to California shape

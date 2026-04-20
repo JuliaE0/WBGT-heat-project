@@ -107,26 +107,6 @@ for (t in 1:ntime) {
 })
 ```
 
-
-```{r}
-
-t = 19
-
-# expand time variables
-year_mat  <- matrix(year[t],  nlat, nlon)
-month_mat <- matrix(month[t], nlat, nlon)
-dday_mat  <- matrix(dday[t],  nlat, nlon)
-
-# call vectorized WBGT
-wbgt_out[t,,] <- v_wbgt(
-  year_mat, month_mat, dday_mat,
-  lat_mat, lon_mat,
-  solar[t,,], cza[t,,], fdir[t,,],
-  pres[t,,], Tair[t,,], relhum[t,,],
-  speed[t,,], zspeed, dT, urban[t,,])
-```
-
-
 ```{r}
 # crop to California shape
 

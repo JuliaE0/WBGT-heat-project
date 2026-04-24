@@ -162,6 +162,7 @@ plot(r)
 title(main = paste("WBGT at", times[t_index]), line=3)
 ```
 
+
 ## compare with Spangler's
 
 ```{r}
@@ -646,6 +647,130 @@ ggplot(comparison, aes(x = heatvars_WBGT_mean, y = calculated_WBGT_mean)) +
 
 ```
 
+## time series of new WBGT at several locations
+
+```{r}
+# plot wbgt_out at a single timestep
+
+nc <- nc_open("wbgt_outputs.nc")
+# names(nc$var)
+
+
+# read coordinates
+lat <- ncvar_get(nc, "latitude")
+lon <- ncvar_get(nc, "longitude")
+time <- ncvar_get(nc, "valid_time")
+
+time_units <- ncatt_get(nc, "valid_time", "units")$value
+# extract origin (everything after "since ")
+origin <- sub(".*since ", "", time_units)
+time_dates <- as.POSIXct(time, origin = origin, tz = "UTC")
+
+# extract wbgt time series
+wbgt <- ncvar_get(nc, "wbgt_new")
+
+######## coordinates for Los Angeles
+target_lat <- 34.05
+target_lon <- -118.24
+
+# find nearest indices
+lat_idx <- which.min(abs(lat - target_lat))
+lon_idx <- which.min(abs(lon - target_lon))
+
+# adjust indexing depending on dimension order
+wbgt_series <- wbgt[lon_idx, lat_idx, ]
+
+# plot
+plot(time_dates, wbgt_series, type = "l", xlab = "Time", ylab = "WBGT",
+     main = "WBGT Time Series (Aug 2019) \n Los Angeles")
+
+######## coordinates for Sacramento
+target_lat <- 38.58
+target_lon <- -121.49
+
+# find nearest indices
+lat_idx <- which.min(abs(lat - target_lat))
+lon_idx <- which.min(abs(lon - target_lon))
+
+# adjust indexing depending on dimension order
+wbgt_series <- wbgt[lon_idx, lat_idx, ]
+
+# plot
+plot(time_dates, wbgt_series, type = "l", xlab = "Time", ylab = "WBGT",
+     main = "WBGT Time Series (Aug 2019) \n Sacramento")
+
+######## coordinates for Irvine
+target_lat <- 33.68
+target_lon <- -117.83
+
+# find nearest indices
+lat_idx <- which.min(abs(lat - target_lat))
+lon_idx <- which.min(abs(lon - target_lon))
+
+# adjust indexing depending on dimension order
+wbgt_series <- wbgt[lon_idx, lat_idx, ]
+
+# plot
+plot(time_dates, wbgt_series, type = "l", xlab = "Time", ylab = "WBGT",
+     main = "WBGT Time Series (Aug 2019) \n Irvine")
+
+######## coordinates for Furnace Creek
+target_lat <- 36.46
+target_lon <- -116.87
+
+# find nearest indices
+lat_idx <- which.min(abs(lat - target_lat))
+lon_idx <- which.min(abs(lon - target_lon))
+
+# adjust indexing depending on dimension order
+wbgt_series <- wbgt[lon_idx, lat_idx, ]
+
+# plot
+plot(time_dates, wbgt_series, type = "l", xlab = "Time", ylab = "WBGT",
+     main = "WBGT Time Series (Aug 2019) \n Furnace Creek (hot place)")
+
+######## coordinates for Bodie State Historic Park
+target_lat <- 38.21
+target_lon <- -119.01
+
+# find nearest indices
+lat_idx <- which.min(abs(lat - target_lat))
+lon_idx <- which.min(abs(lon - target_lon))
+
+# adjust indexing depending on dimension order
+wbgt_series <- wbgt[lon_idx, lat_idx, ]
+
+# plot
+plot(time_dates, wbgt_series, type = "l", xlab = "Time", ylab = "WBGT",
+     main = "WBGT Time Series (Aug 2019) \n Bodie State Historic Park (cold place)")
+
+nc_close(nc)
+```
+```{r}
+# function to extract WBGT series for a location
+get_wbgt_series <- function(target_lat, target_lon, lat, lon, wbgt) {
+  lat_idx <- which.min(abs(lat - target_lat))
+  lon_idx <- which.min(abs(lon - target_lon))
+  wbgt[lon_idx, lat_idx, ]}
+
+# extract all series
+wbgt_irv <- get_wbgt_series(33.68, -117.83, lat, lon, wbgt)
+wbgt_fur <- get_wbgt_series(36.46, -116.87, lat, lon, wbgt)
+wbgt_bod <- get_wbgt_series(38.21, -119.01, lat, lon, wbgt)
+
+# plot time series
+y_range <- range(c(wbgt_bod, wbgt_fur), na.rm = TRUE)
+
+par(mar = c(5, 4, 4, 7), xpd = TRUE)  # extra right margin + allow overflow
+
+plot(time_dates, wbgt_irv, type = "l", col = "orange", lwd = 2, ylim = y_range,
+     xlab = "Date", ylab = "WBGT", main = "WBGT Time Series (Aug 2019)")
+lines(time_dates, wbgt_fur, col = "red", lwd = 2)
+lines(time_dates, wbgt_bod, col = "darkblue", lwd = 2)
+
+legend("topright", inset = c(-0.235, 0), legend = c("Furnace Creek", "Irvine", "Bodie"), 
+       col = c("red", "orange", "darkblue", lwd = 3), lty = 1, cex = 0.7)
+```
 
 
 

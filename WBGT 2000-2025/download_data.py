@@ -50,7 +50,9 @@ client = cdsapi.Client()
 dataset = "reanalysis-era5-single-levels"
 request = {
     "product_type": ["reanalysis"],
-    "variable": ["total_sky_direct_solar_radiation_at_surface"],
+    "variable": [
+        "total_sky_direct_solar_radiation_at_surface",
+        "surface_solar_radiation_downwards"],
     "day": [f"{d:02d}" for d in range(1, 32)],
     "time": [f"{h:02d}:00" for h in range(0, 24)],
     "data_format": "netcdf",

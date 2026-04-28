@@ -1,7 +1,7 @@
 # ---- Variable preprocessing 2000 to 2025 ----
 
-# Preprocess these WBGT input variables: solar, fdir, pres, Tair, relhum, speed, urban
-# other WBGT input: cza will be derived in R
+# Preprocess these WBGT input variables: ssrd_W, fdir_frac, pres, Tair, relhum, speed, urban
+# other WBGT inputs: cza, fdir, and solarRet will be derived in R
 
 # install required libraries
 # !pip install xarray netCDF4 h5netcdf numpy rioxarray regionmask geopandas

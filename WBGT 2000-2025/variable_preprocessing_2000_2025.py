@@ -15,7 +15,7 @@ from pathlib import Path
 
 INPUT_DIR_ERA5_LAND = Path("era5_land_data")
 INPUT_DIR_ERA5 = Path("era5_interpolated")
-OUTPUT_DIR = Path("wbgt_inputs_preprocessed")
+OUTPUT_DIR = Path("wbgt_inputs")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 def preprocess_variables(era5_land, era5):
@@ -30,10 +30,6 @@ def preprocess_variables(era5_land, era5):
     # convert d2m from K to Celsius -- used in "relhum" calculation
     d2m_c = era5_land["d2m"] - 273.15
     d2m_c.attrs["units"] = "C"
-
-    # convert ssrd from J/m2 to W/m2 -- used as "solar" input
-    solar = era5_land["ssrd"] / 3600    # dividy by 3600 seconds since hourly accumulated
-    solar.attrs["units"] = "W m**-2"
 
     # convert sp from Pa to hPa -- used as "pres" input
     pres = era5_land["sp"] / 100
@@ -53,26 +49,52 @@ def preprocess_variables(era5_land, era5):
     speed.attrs["long_name"] = "wind speed (m/s)"
     speed.attrs["units"] = "m s**-1"
 
-    # calculate fraction of surface solar radiation that is direct (0-1) -- used as "fdir" input
-    fdir = xr.where(era5_land["ssrd"].isnull(), np.nan, 
-                    xr.where(era5_land["ssrd"] > 0, era5["fdir"].values / era5_land["ssrd"].values, 0.0))
-    fdir.attrs["long_name"] = "fraction of surface solar radiation that is direct (0-1)"
-    fdir.attrs["units"] = ""  # no units since it's a fraction
+    # convert ERA5 fdir from J/m2 to W/m2 -- used in fdir_frac
+    fdir_W = era5["fdir"] / 3600       # dividy by 3600 seconds since hourly accumulated
+    fdir_W.attrs["long_name"] = "Total sky direct solar radiation at surface"
+    fdir_W.attrs["units"] = "W m**-2"
+
+    # convert ERA5 ssrd from J/m2 to W/m2 -- used in fdir_frac
+    ssrd_W = era5_nn_2019["ssrd"] / 3600       # dividy by 3600 seconds since hourly accumulated
+    ssrd_W.attrs["long_name"] = "Surface solar radiation downwards"
+    ssrd_W.attrs["units"] = "W m**-2"
+
+    # calculate fdir_frac -- used to calculate cza, fdir, solarRet
+    fdir_frac = xr.where(ssrd_W.isnull(), np.nan, 
+                xr.where(ssrd_W > 0, fdir_W.values / ssrd_W.where(ssrd_W > 0), 0.0))
+    fdir_frac.attrs["long_name"] = "fraction of surface solar radiation that is direct (0-1)"
+    fdir_frac.attrs["units"] = ""  # no units since it's a fraction
+
 
     # load urban variable that was created in QGIS -- used as "urban" input
     # TO DO
     # first need to create the yearly urban files in QGIS
 
+
+    ########### set consistent coordinates
+    latitude = Tair.latitude.values
+    longitude = Tair.longitude.values
     
-    # build working dataset: save preprocessed variables into output dataset
+    ssrd_W = ssrd_W.assign_coords(latitude=latitude, longitude=longitude)
+    pres = pres.assign_coords(latitude=latitude, longitude=longitude)
+    fdir_frac = fdir_frac.assign_coords(latitude=latitude, longitude=longitude)
+    relhum = relhum.assign_coords(latitude=latitude, longitude=longitude)
+    speed = speed.assign_coords(latitude=latitude, longitude=longitude)
+    
+    ########### build working dataset: save preprocessed variables into a dataset
     preprocessed = xr.Dataset(
-        {"solar": solar,
-         "fdir": fdir,
+        {"ssrd_W": ssrd_W,
+         "fdir_frac": fdir_frac,
          "pres": pres,
          "Tair": Tair,
          "relhum": relhum,
          "speed": speed,
-         "urban": TO DO
+         "urban": TO DO #### remember to assign urban variable here
+        },
+    coords={
+        "valid_time": t2m_c.valid_time,
+        "latitude": t2m_c.latitude.values,
+        "longitude": t2m_c.longitude.values,
         }
         )
     preprocessed = preprocessed.sortby("latitude", ascending=False)
@@ -93,16 +115,6 @@ def preprocess_variables(era5_land, era5):
     return preprocessed
 
 
-def clip_to_ca_boundary(preprocessed):
-    
-    shp_path = Path("ca_state/CA_state.shp")  # USE NEW SHAPE FILE. DOWNLOAD FROM GOOGLE DRIVE FIRST. FIX
-    ca = gpd.read_file(shp_path)
-    ca = ca.to_crs("EPSG:4326")
-    mask = regionmask.mask_geopandas(ca, preprocessed.longitude, preprocessed.latitude)
-    output = preprocessed.where(~mask.isnull()) # keep whole grid cells on the edges of CA
-    
-    return output
-
 
 def main():
     files = sorted(INPUT_DIR_ERA5_LAND.glob("era5_land_*.nc"))
@@ -117,13 +129,12 @@ def main():
             print(f"Skipping existing: {output_file.name}")
             continue
         
-        idw_file = INPUT_DIR_ERA5 / f"era5_{year}_{month}_idw.nc"
+        nn_file = INPUT_DIR_ERA5 / f"era5_{year}_{month}_nn.nc"
 
         print(f"Processing: {year}-{month}")
 
-        with xr.open_dataset(file) as era5_land, xr.open_dataset(idw_file) as era5:
+        with xr.open_dataset(file) as era5_land, xr.open_dataset(nn_file) as era5:
             ds = preprocess_variables(era5_land, era5)
-            ds = clip_to_ca_boundary(ds)
             ds.to_netcdf(output_file)
 
     print("Done.")

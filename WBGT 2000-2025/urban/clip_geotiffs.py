@@ -41,26 +41,29 @@ def clip_raster_by_shape(in_raster_path, out_raster_path, mask_geom, mask_crs, f
     with rasterio.open(in_raster_path) as src:
         raster_crs = src.crs
 
-        # Safety check: shapefile must have a CRS
         if mask_crs is None:
-            raise ValueError("Mask shapefile has no CRS defined. Please define its CRS before running.")
+            raise ValueError("Mask shapefile has no CRS defined.")
 
-        # Reproject mask geometry to raster CRS if different
+        # Reproject mask if needed
         if mask_crs != raster_crs:
-            # build a 1-row GeoDataFrame just to reproject easily
             mask_gdf = gpd.GeoDataFrame({"geometry": [mask_geom]}, crs=mask_crs)
             mask_gdf_proj = mask_gdf.to_crs(raster_crs)
             clip_geom_proj = mask_gdf_proj.geometry.iloc[0]
         else:
             clip_geom_proj = mask_geom
 
-        # Prepare nodata handling
-        if force_nodata is not None:
-            nodata_val = force_nodata
-        else:
-            nodata_val = src.nodata
+        # Handle nodata
+        nodata_val = force_nodata if force_nodata is not None else src.nodata
 
-        # rasterio.mask.mask expects GeoJSON-like mapping(s)
+        # safely read colormap (palette)
+        colormap = None
+        if src.count == 1:
+            try:
+                colormap = src.colormap(1)
+            except Exception:
+                colormap = None
+
+        # Clip raster
         clipped_data, clipped_transform = mask(
             dataset=src,
             shapes=[clip_geom_proj.__geo_interface__],
@@ -68,18 +71,23 @@ def clip_raster_by_shape(in_raster_path, out_raster_path, mask_geom, mask_crs, f
             nodata=nodata_val
         )
 
-        # Copy and update metadata for new size/transform/nodata
+        # Update metadata
         out_meta = src.meta.copy()
         out_meta.update({
             "height": clipped_data.shape[1],
             "width": clipped_data.shape[2],
             "transform": clipped_transform,
-            "nodata": nodata_val
+            "nodata": nodata_val,
+            "dtype": src.dtypes[0]   # for palette rasters
         })
 
-    # Write clipped raster
+    # Write output
     with rasterio.open(out_raster_path, "w", **out_meta) as dest:
         dest.write(clipped_data)
+
+        # write colormap back
+        if colormap:
+            dest.write_colormap(1, colormap)
 
 
 def main():

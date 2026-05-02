@@ -18,7 +18,7 @@ INPUT_DIR_ERA5 = Path("era5_interpolated")
 OUTPUT_DIR = Path("wbgt_inputs")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-def preprocess_variables(era5_land, era5):
+def preprocess_variables(era5_land, era5, year):
     """
     preprocess input variables
     """
@@ -50,12 +50,12 @@ def preprocess_variables(era5_land, era5):
     speed.attrs["units"] = "m s**-1"
 
     # convert ERA5 fdir from J/m2 to W/m2 -- used in fdir_frac
-    fdir_W = era5["fdir"] / 3600       # dividy by 3600 seconds since hourly accumulated
+    fdir_W = era5["fdir"] / 3600       # divide by 3600 seconds since hourly accumulated
     fdir_W.attrs["long_name"] = "Total sky direct solar radiation at surface"
     fdir_W.attrs["units"] = "W m**-2"
 
     # convert ERA5 ssrd from J/m2 to W/m2 -- used in fdir_frac
-    ssrd_W = era5_nn_2019["ssrd"] / 3600       # dividy by 3600 seconds since hourly accumulated
+    ssrd_W = era5["ssrd"] / 3600       # divide by 3600 seconds since hourly accumulated
     ssrd_W.attrs["long_name"] = "Surface solar radiation downwards"
     ssrd_W.attrs["units"] = "W m**-2"
 
@@ -65,10 +65,18 @@ def preprocess_variables(era5_land, era5):
     fdir_frac.attrs["long_name"] = "fraction of surface solar radiation that is direct (0-1)"
     fdir_frac.attrs["units"] = ""  # no units since it's a fraction
 
-
     # load urban variable that was created in QGIS -- used as "urban" input
-    # TO DO
-    # first need to create the yearly urban files in QGIS
+    URBAN_DIR = Path("urban_yearly")
+    urban_file = URBAN_DIR / f"urban_{year}.nc"
+    urban = xr.open_dataset(urban_file) # open urban file
+    urban = urban.rename({'Band1': 'urban'})
+    urban['urban'] = urban['urban'].astype('int8')
+    urban = urban.rename({"lat": "latitude", "lon": "longitude"})
+    urban = urban.sortby("latitude", ascending=False)
+    urban = urban.expand_dims(valid_time = era5_land.valid_time)
+    urban = urban.assign_coords(latitude=era5_land.latitude, longitude=era5_land.longitude)
+    urban["urban"].attrs["long_name"] = "urban (1), rural (0)"  # attributes
+    urban["urban"].attrs["units"] = ""
 
 
     ########### set consistent coordinates
@@ -89,12 +97,12 @@ def preprocess_variables(era5_land, era5):
          "Tair": Tair,
          "relhum": relhum,
          "speed": speed,
-         "urban": TO DO #### remember to assign urban variable here
+         "urban": urban["urban"]
         },
     coords={
-        "valid_time": t2m_c.valid_time,
-        "latitude": t2m_c.latitude.values,
-        "longitude": t2m_c.longitude.values,
+        "valid_time": Tair.valid_time,
+        "latitude": Tair.latitude.values,
+        "longitude": Tair.longitude.values,
         }
         )
     preprocessed = preprocessed.sortby("latitude", ascending=False)
@@ -134,7 +142,7 @@ def main():
         print(f"Processing: {year}-{month}")
 
         with xr.open_dataset(file) as era5_land, xr.open_dataset(nn_file) as era5:
-            ds = preprocess_variables(era5_land, era5)
+            ds = preprocess_variables(era5_land, era5, year)
             ds.to_netcdf(output_file)
 
     print("Done.")

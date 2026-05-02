@@ -17,7 +17,7 @@ library(reticulate)
 # open the preprocessed dataset created in part 1
 
 # open and view preprocessed dataset -------- LOOP OVER ALL FILES. NEED TO WORK ON
-inputs_p1 <- nc_open("wbgt_inputs_{year}_{month}.nc", write = TRUE)
+inputs_p1 <- nc_open("wbgt_inputs_{year}_{month}.nc", write = TRUE) # something like this
 
 #names(wbgt_inputs_aug_2019$var)
 #dim(ncvar_get(wbgt_inputs_aug_2019, "fdir_frac")) # R shows dimensions as longitude x latitude x times
@@ -31,6 +31,7 @@ source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_calc_cz
 source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_calc_solar_parameters.R")
 ```
 
+LOOP EVERYTHING BELOW OVER MONTHS
 
 ## Calculate "cza" using v_calc_cza_int
 ```{r}

@@ -3,9 +3,10 @@
 library(ncdf4)
 
 ############ load vectorized functions
-source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_calc_cza.R")
-source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_calc_cza_int.R")
-source("C:/Users/new account/Desktop/WBGT-heat-project/heatmetrics_vec/v_calc_solar_parameters.R")
+source("/mnt/HDD7/juliae/WBGT-heat-project/heatmetrics_vec/v_calc_cza.R")
+source("/mnt/HDD7/juliae/WBGT-heat-project/heatmetrics_vec/v_calc_cza_int.R")
+source("/mnt/HDD7/juliae/WBGT-heat-project/heatmetrics_vec/v_calc_solar_parameters.R")
+source("/mnt/HDD7/juliae/WBGT-heat-project/heatmetrics_vec/calc_solarDA.R")
 
 ############ open wbgt_inputs_part1 files
 files <- list.files("wbgt_inputs_part1",
@@ -19,6 +20,11 @@ dir.create("wbgt_inputs_complete", showWarnings = FALSE)
 for (file in files) {
   wbgt_inputs <- nc_open(file)  # open file
   
+  file_name <- basename(file)
+  file_year <- substr(file_name, 13, 16)
+  file_month <- substr(file_name, 18, 19)
+  cat("Processing:", file_year, "-", file_month, "\n")
+
   ############ ----------- calculate cza -----------
   # get inputs for v_calc_cza_int
   lat <- ncvar_get(wbgt_inputs, "latitude")
@@ -128,16 +134,13 @@ for (file in files) {
   ############ ----------- save v_cza, v_fdir, and v_solarRet to input files -----------
   output_file <- file.path("wbgt_inputs_complete", basename(file))
   file.copy(file, output_file, overwrite = TRUE)
-  
   nc_out <- nc_open(output_file, write = TRUE)
-  ncvar_add(nc_out, v_cza)
-  ncvar_add(nc_out, v_fdir)
-  ncvar_add(nc_out, v_solarRet)
   
   ncvar_put(nc_out, "v_cza", v_cza_array)
   ncvar_put(nc_out, "v_fdir", v_fdir_array)
   ncvar_put(nc_out, "v_solarRet", v_solarRet_array)
   
   nc_close(nc_out)
+  nc_close(wbgt_inputs)
   
 }

@@ -78,6 +78,23 @@ def preprocess_variables(era5_land, era5, year):
     urban["urban"].attrs["long_name"] = "urban (1), rural (0)"  # attributes
     urban["urban"].attrs["units"] = ""
 
+    # create placeholder variables for v_cza, v_fdir, and v_solarRet to be calculated in R
+    shape = ssrd_W.shape  # (time, lat, lon)
+    v_cza = xr.DataArray(
+        np.full(shape, np.nan, dtype="float32"),
+        dims=ssrd_W.dims,
+        coords=ssrd_W.coords,
+        name="v_cza")
+    v_fdir = xr.DataArray(
+        np.full(shape, np.nan, dtype="float32"),
+        dims=ssrd_W.dims,
+        coords=ssrd_W.coords,
+        name="v_fdir")
+    v_solarRet = xr.DataArray(
+        np.full(shape, np.nan, dtype="float32"),
+        dims=ssrd_W.dims,
+        coords=ssrd_W.coords,
+        name="v_solarRet"    )
 
     ########### set consistent coordinates
     latitude = Tair.latitude.values
@@ -97,7 +114,10 @@ def preprocess_variables(era5_land, era5, year):
          "Tair": Tair,
          "relhum": relhum,
          "speed": speed,
-         "urban": urban["urban"]
+         "urban": urban["urban"],
+         "v_cza": v_cza,
+         "v_fdir": v_fdir,
+         "v_solarRet": v_solarRet
         },
     coords={
         "valid_time": Tair.valid_time,

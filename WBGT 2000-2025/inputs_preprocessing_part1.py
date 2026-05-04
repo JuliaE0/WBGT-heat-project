@@ -15,7 +15,7 @@ from pathlib import Path
 
 INPUT_DIR_ERA5_LAND = Path("era5_land_data")
 INPUT_DIR_ERA5 = Path("era5_interpolated")
-OUTPUT_DIR = Path("wbgt_inputs")
+OUTPUT_DIR = Path("wbgt_inputs_part1")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 def preprocess_variables(era5_land, era5, year):
@@ -74,7 +74,7 @@ def preprocess_variables(era5_land, era5, year):
     urban = urban.rename({"lat": "latitude", "lon": "longitude"})
     urban = urban.sortby("latitude", ascending=False)
     urban = urban.expand_dims(valid_time = era5_land.valid_time)
-    urban = urban.assign_coords(latitude=era5_land.latitude, longitude=era5_land.longitude)
+    urban = urban.interp_like(era5_land)
     urban["urban"].attrs["long_name"] = "urban (1), rural (0)"  # attributes
     urban["urban"].attrs["units"] = ""
 

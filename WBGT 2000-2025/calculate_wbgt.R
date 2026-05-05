@@ -69,7 +69,6 @@ for (file in files) {
   ############## WBGT calculation
   system.time({
   for (t in 1:ntime) {
-    
     year_mat  <- matrix(year[t],  nlat, nlon)
     month_mat <- matrix(month[t], nlat, nlon)
     dday_mat  <- matrix(dday[t],  nlat, nlon)
@@ -85,18 +84,14 @@ for (file in files) {
   
   ########## crop to California shape
   times <- ncvar_get(inputs, "valid_time")
-  
   wbgt_for_terra <- aperm(wbgt_out, c(2,3,1))
-  
   r_wbgt <- rast(wbgt_for_terra)
   ext(r_wbgt) <- c(min(lon), max(lon), min(lat), max(lat))
   crs(r_wbgt) <- "EPSG:4326"
   
   ca_shape <- vect("ca_grid/ERA5_Land_grid_CAfull.shp")
   ca_shape <- project(ca_shape, crs(r_wbgt))
-  
   r_wbgt <- mask(crop(r_wbgt, ca_shape), ca_shape)
-  
   vals <- terra::values(r_wbgt, mat = TRUE)
   
   nrow_ca <- nrow(r_wbgt)

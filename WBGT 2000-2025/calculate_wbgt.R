@@ -33,9 +33,12 @@ files <- list.files(
 
 for (file in files) {
   
-  cat("Calculating:", basename(file), "\n")
-  
   inputs <- nc_open(file)
+  
+  file_name <- basename(file)
+  file_year <- substr(file_name, 13, 16)
+  file_month <- substr(file_name, 18, 19)
+  cat("Calculating:", file_year, "-", file_month, "\n")
   
   ############## get input variables
   year  <- ncvar_get(inputs, "year")

@@ -140,4 +140,51 @@ nc_close(inputs_p2)
 ```
 
 
+###  checking WBGT files
+```{r}
+# open the wbgt 2000-01 file
+wbgt <- nc_open("wbgt_2000_01.nc") 
+
+names(wbgt$var)
+dim(ncvar_get(wbgt, "wbgt")) # R shows dimensions as longitude x latitude x times
+ncatt_get(wbgt, "valid_time", "units")
+
+summary(ncvar_get(wbgt, "wbgt"))
+```
+```{r}
+shp <- vect("deriving urban/ca_grid/ERA5_Land_grid_CAfull.shp")
+wbgt <- rast("wbgt_2000_01.nc", subds = "wbgt")
+wbgt_ca <- crop(wbgt, shp)
+wbgt_ca <- mask(wbgt_ca, shp)
+
+vals <- values(wbgt_ca, mat = TRUE)
+vals <- as.vector(vals)
+summary(vals)
+```
+
+
+```{r}
+# crop to California shape and plot
+
+shp <- vect("deriving urban/ca_grid/ERA5_Land_grid_CAfull.shp")
+wbgt <- nc_open("wbgt_2000_01.nc") 
+
+time_raw <- ncvar_get(wbgt, "valid_time")
+time_units <- ncatt_get(wbgt, "valid_time", "units")$value
+time_vals <- as.POSIXct(time_raw, origin="1970-01-01", tz="UTC")
+
+r <- rast("wbgt_2000_01.nc", subds = "wbgt")
+time_raw <- ncvar_get(wbgt, "valid_time")
+time_vals <- as.POSIXct(time_raw, origin = "1970-01-01", tz = "UTC")
+time(r) <- time_vals
+t_index <- which(time_vals == as.POSIXct("2000-01-01 18:00", tz="UTC"))
+r_slice <- r[[t_index]]
+r_crop <- crop(r_slice, shp)
+r_mask <- mask(r_crop, shp)
+plot(r_mask)
+title(main = "wbgt at 2000-01-01 18:00", line=3)
+
+nc_close(wbgt)
+```
+
 

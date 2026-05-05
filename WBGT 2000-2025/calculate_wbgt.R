@@ -2,6 +2,7 @@
 
 
 library(ncdf4)
+library(terra)
 
 source("/mnt/HDD7/juliae/WBGT-heat-project/heatmetrics_vec/v_calc_solar_parameters.R")
 source("/mnt/HDD7/juliae/WBGT-heat-project/heatmetrics_vec/v_stab_srdt.R")

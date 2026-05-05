@@ -84,32 +84,34 @@ for (file in files) {
   })
   
   ########## crop to California shape
-  times <- ncvar_get(inputs, "valid_time")
-  wbgt_for_terra <- aperm(wbgt_out, c(2,3,1))
-  r_wbgt <- rast(wbgt_for_terra)
-  ext(r_wbgt) <- c(min(lon), max(lon), min(lat), max(lat))
-  crs(r_wbgt) <- "EPSG:4326"
+  #times <- ncvar_get(inputs, "valid_time")
+  #wbgt_for_terra <- aperm(wbgt_out, c(2,3,1))
+  #r_wbgt <- rast(wbgt_for_terra)
+  #ext(r_wbgt) <- c(min(lon), max(lon), min(lat), max(lat))
+  #crs(r_wbgt) <- "EPSG:4326"
   
-  ca_shape <- vect("deriving urban/ca_grid/ERA5_Land_grid_CAfull.shp")
-  ca_shape <- project(ca_shape, crs(r_wbgt))
-  r_wbgt <- mask(crop(r_wbgt, ca_shape), ca_shape)
-  vals <- terra::values(r_wbgt, mat = TRUE)
+  #ca_shape <- vect("deriving urban/ca_grid/ERA5_Land_grid_CAfull.shp")
+  #ca_shape <- project(ca_shape, crs(r_wbgt))
+  #r_wbgt <- mask(crop(r_wbgt, ca_shape), ca_shape)
+  #vals <- terra::values(r_wbgt, mat = TRUE)
   
-  nrow_ca <- nrow(r_wbgt)
-  ncol_ca <- ncol(r_wbgt)
-  ntime <- nlyr(r_wbgt)
+  #nrow_ca <- nrow(r_wbgt)
+  #ncol_ca <- ncol(r_wbgt)
+  #ntime <- nlyr(r_wbgt)
   
-  wbgt_ca <- array(vals, dim = c(ncol_ca, nrow_ca, ntime))
-  wbgt_ca <- aperm(wbgt_ca, c(3,2,1))
+  #wbgt_ca <- array(vals, dim = c(ncol_ca, nrow_ca, ntime))
+  #wbgt_ca <- aperm(wbgt_ca, c(3,2,1))
   
   ########## save output
+  wbgt_to_write <- aperm(wbgt_out, c(3,2,1))
+  
   out_name <- sub("wbgt_inputs_", "wbgt_", basename(file))
   out_file <- file.path(output_dir, out_name)
   
   # define dimensions
-  dim_lon  <- ncdim_def("longitude","degrees_east",inputs$dim$longitude$vals)
-  dim_lat  <- ncdim_def("latitude","degrees_north",inputs$dim$latitude$vals)
-  dim_time <- ncdim_def("valid_time","seconds since 1970-01-01", inputs$dim$valid_time$vals)
+  dim_lon  <- ncdim_def("longitude","degrees_east", lon)
+  dim_lat  <- ncdim_def("latitude","degrees_north", lat)
+  dim_time <- ncdim_def("valid_time","seconds since 1970-01-01", ncvar_get(inputs, "valid_time"))
   
   # define variable
   wbgt <- ncvar_def(
@@ -122,7 +124,7 @@ for (file in files) {
 
   # create NetCDF with wbgt variable
   wbgt_output <- nc_create(out_file, list(wbgt))
-  ncvar_put(wbgt_output, "wbgt", wbgt_ca)
+  ncvar_put(wbgt_output, "wbgt", wbgt_to_write)
   
   nc_close(inputs)
   nc_close(wbgt_output)

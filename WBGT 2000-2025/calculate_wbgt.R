@@ -67,6 +67,7 @@ for (file in files) {
   wbgt_out <- array(NA_real_, dim = c(ntime, nlat, nlon))
   
   ############## WBGT calculation
+  system.time({
   for (t in 1:ntime) {
     
     year_mat  <- matrix(year[t],  nlat, nlon)
@@ -79,8 +80,8 @@ for (file in files) {
       solar[t,,], cza[t,,], fdir[t,,],
       pres[t,,], Tair[t,,], relhum[t,,],
       speed[t,,], zspeed, dT, urban[t,,]
-    )
-  }
+    )}
+  })
   
   ########## crop to California shape
   times <- ncvar_get(inputs, "valid_time")

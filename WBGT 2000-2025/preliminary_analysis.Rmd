@@ -56,7 +56,7 @@ monthly_stats <- lapply(seq_along(files), function(i){
     min_wbgt = min(vals, na.rm=TRUE),
     mean_wbgt = mean(vals, na.rm=TRUE),
     max_wbgt = max(vals, na.rm=TRUE),
-    pct_over_30 = mean(vals > 30, na.rm=TRUE) * 100  # is 30 an extreme wbgt?
+    pct_over_32 = mean(vals > 32, na.rm=TRUE) * 100  # percent of CA area that is > 32C (extreme)
   )
 })
 
@@ -80,7 +80,7 @@ annual <- monthly_stats %>%
     min_wbgt = min(min_wbgt),
     mean_wbgt = mean(mean_wbgt),
     max_wbgt = max(max_wbgt),
-    pct_over_30 = mean(pct_over_30)
+    pct_over_32 = mean(pct_over_32)
   )
 
 ggplot(annual, aes(year, mean_wbgt)) + geom_line()
@@ -119,16 +119,79 @@ ggplot(monthly_stats, aes(x = month, y = mean_wbgt, group = year, color = factor
   geom_line() + labs(x = "Month", y = "Mean WBGT", color = "Year") + theme_minimal()
 ```
 
-extreme WBGT, heatwaves
+extreme WBGT
 ```{r}
-# percent of California area that has WBGT > 30
-ggplot(annual, aes(year, pct_over_30)) + geom_line() + 
-  labs(y = "percent of California area that has WBGT > 30")
+# percent of California area that has WBGT > 32
+ggplot(annual, aes(year, pct_over_32)) + geom_line() + 
+  labs(y = "percent of California area that has WBGT > 32")
 ```
+
+
+Annual mean WBGT trend map
+```{r}
+years <- str_extract(basename(files), "\\d{4}") |> as.integer()
+months <- str_extract(
+  basename(files),
+  "(?<=_)\\d{2}(?=\\.nc)"
+) |> as.integer()
+
+# annual mean WBGT raster
+unique_years <- sort(unique(years))
+
+annual_mean_list <- list()
+
+for(y in unique_years){
+
+  yr_files <- files[years == y]
+
+  r <- rast(yr_files)
+
+  # annual mean across all timesteps. Mean WBGT for that year at every grid cell.
+  annual_mean <- app(r, mean, na.rm=TRUE)
+
+  annual_mean_list[[as.character(y)]] <- annual_mean
+}
+
+# stack annual rasters
+annual_stack <- rast(annual_mean_list)  # Build a time series per pixel
+names(annual_stack) <- unique_years
+
+# compute trend per gridcell
+trend_fun <- function(x){
+
+  if(all(is.na(x))) return(NA)
+
+  yrs <- unique_years
+
+  fit <- lm(x ~ yrs) # Fit a linear regression at each grid cell
+
+  slope <- coef(fit)[2]
+
+  # convert to °C/year
+  slope
+}
+
+trend_map <- app(
+  annual_stack,
+  trend_fun
+)
+
+# plot trend map. Each pixel contains change in annual mean WBGT per year
+# Example interpretation: +0.35 °C/year means: Annual mean WBGT increased by 0.35°C every 10 years at that location.
+
+ca_shape <- vect("deriving urban/ca_grid/ERA5_Land_grid_CAfull.shp")
+# plot raster cropped to CA
+trend_ca <- mask(crop(trend_map, ca_shape), ca_shape)
+plot(trend_ca, main = "Annual Mean WBGT Trend (°C/year)")
+```
+
+Extreme WBGT trend map
+```{r}
+
+```
+
+
 
 To do: grid-cell/regional level trends
-```{r}
-
-```
-
+map of extreme WBGT across CA, comparisons across major regions (coastal, inland, valley, desert, mountains), identification of WBGT hotspots and areas with the largest increases over time
 

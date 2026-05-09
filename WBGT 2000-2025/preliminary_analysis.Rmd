@@ -1,0 +1,134 @@
+---
+title: "preliminary analysis"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, warning=FALSE, message=FALSE}
+library(terra)
+library(stringr)
+library(dplyr)
+library(ggplot2)
+library(zoo)
+```
+
+
+## temporal analysis
+
+```{r}
+# load all files
+
+files <- list.files(
+  "wbgt",
+  pattern = "\\.nc$",
+  full.names = TRUE
+)
+
+df <- data.frame(
+  file = files
+)
+
+df$year <- str_extract(basename(files), "\\d{4}") |> as.integer()
+
+df$month <- str_extract(
+  basename(files),
+  "(?<=_)\\d{2}(?=\\.nc)"
+) |> as.integer()
+```
+
+
+monthly min, mean, max
+```{r}
+# create monthly min, mean, max
+
+monthly_stats <- lapply(seq_along(files), function(i){
+
+  r <- rast(files[i], subds = "wbgt")
+
+  vals <- values(r)
+
+  data.frame(
+    year = df$year[i],
+    month = df$month[i],
+    min_wbgt = min(vals, na.rm=TRUE),
+    mean_wbgt = mean(vals, na.rm=TRUE),
+    max_wbgt = max(vals, na.rm=TRUE),
+    pct_over_30 = mean(vals > 30, na.rm=TRUE) * 100  # is 30 an extreme wbgt?
+  )
+})
+
+monthly_stats <- bind_rows(monthly_stats)
+```
+
+Monthly, annual, and seasonal min, mean, max
+```{r}
+# monthly time series
+
+monthly_stats <- monthly_stats %>%
+  mutate(date = as.yearmon(paste(year, month), "%Y %m"))
+
+ggplot(monthly_stats, aes(x = date, y = mean_wbgt)) + geom_line()
+
+
+# annual time series
+annual <- monthly_stats %>%
+  group_by(year) %>%
+  summarize(
+    min_wbgt = min(min_wbgt),
+    mean_wbgt = mean(mean_wbgt),
+    max_wbgt = max(max_wbgt),
+    pct_over_30 = mean(pct_over_30)
+  )
+
+ggplot(annual, aes(year, mean_wbgt)) + geom_line()
+
+
+# seasonal mean
+monthly_stats <- monthly_stats %>%
+  mutate(
+    season = case_when(
+      month %in% c(12,1,2) ~ "winter",
+      month %in% c(3,4,5) ~ "spring",
+      month %in% c(6,7,8) ~ "summer",
+      month %in% c(9,10,11) ~ "autumn"
+    ))
+
+seasonal <- monthly_stats %>%
+  group_by(year, season) %>%
+  summarize(
+    mean_wbgt = mean(mean_wbgt),.groups = "drop")
+
+ggplot(seasonal, aes(x = year, y = mean_wbgt, color = season)) + geom_line() + theme_minimal()
+ggplot(seasonal, aes(season, mean_wbgt)) + geom_boxplot()
+
+
+# aggregated monthly mean
+monthly <- monthly_stats %>%
+  group_by(month) %>%
+  summarize(
+    mean_wbgt = mean(mean_wbgt)
+  )
+
+ggplot(monthly, aes(month, mean_wbgt)) + geom_line()
+
+# another one split by year or groups of years
+ggplot(monthly_stats, aes(x = month, y = mean_wbgt, group = year, color = factor(year))) +
+  geom_line() + labs(x = "Month", y = "Mean WBGT", color = "Year") + theme_minimal()
+```
+
+extreme WBGT, heatwaves
+```{r}
+# percent of California area that has WBGT > 30
+ggplot(annual, aes(year, pct_over_30)) + geom_line() + 
+  labs(y = "percent of California area that has WBGT > 30")
+```
+
+To do: grid-cell/regional level trends
+```{r}
+
+```
+
+

@@ -13,6 +13,7 @@ library(stringr)
 library(dplyr)
 library(ggplot2)
 library(zoo)
+library(purrr)
 ```
 
 
@@ -40,19 +41,83 @@ df$month <- str_extract(
 ```
 
 
+crop data to CA shape
+```{r}
+# read CA shape
+ca_shape <- vect("deriving urban/ca_grid/ERA5_Land_grid_CAfull.shp")
+
+# output directory
+dir.create("wbgt_ca", showWarnings = FALSE)
+
+# loop through files
+for(i in seq_len(nrow(df))) {
+
+  f <- df$file[i]
+
+  cat("Processing:", basename(f), "\n")
+
+  # read raster
+  r <- rast(f)
+
+  # project shape if needed
+  ca_proj <- project(ca_shape, crs(r))
+
+  # crop first (faster)
+  r_crop <- crop(r, ca_proj)
+
+  # mask to exact CA boundary
+  r_ca <- mask(r_crop, ca_proj)
+
+  # output filename
+  out_file <- file.path(
+    "wbgt_ca",
+    paste0(tools::file_path_sans_ext(basename(f)), "_CA.nc")
+  )
+
+  # write NetCDF
+  writeCDF(
+    r_ca,
+    filename = out_file,
+    overwrite = TRUE
+  )
+}
+```
+
+
+open cropped WBGT files
+```{r}
+files_ca <- list.files(
+  "wbgt_ca",
+  pattern = "\\.nc$",
+  full.names = TRUE
+)
+
+df_ca <- data.frame(
+  file = files_ca
+)
+
+df_ca$year <- str_extract(basename(files), "\\d{4}") |> as.integer()
+
+df_ca$month <- str_extract(
+  basename(files_ca),
+  "(?<=_)\\d{2}(?=_CA\\.nc)"
+) |> as.integer()
+```
+
+
 monthly min, mean, max
 ```{r}
 # create monthly min, mean, max
 
-monthly_stats <- lapply(seq_along(files), function(i){
+monthly_stats <- lapply(seq_along(files_ca), function(i){
 
-  r <- rast(files[i], subds = "wbgt")
+  r <- rast(files_ca[i], subds = "wbgt")
 
   vals <- values(r)
 
   data.frame(
-    year = df$year[i],
-    month = df$month[i],
+    year = df_ca$year[i],
+    month = df_ca$month[i],
     min_wbgt = min(vals, na.rm=TRUE),
     mean_wbgt = mean(vals, na.rm=TRUE),
     max_wbgt = max(vals, na.rm=TRUE),
@@ -65,13 +130,16 @@ monthly_stats <- bind_rows(monthly_stats)
 
 Monthly, annual, and seasonal min, mean, max
 ```{r}
-# monthly time series
+# monthly time series --- add min and max lines
 
 monthly_stats <- monthly_stats %>%
   mutate(date = as.yearmon(paste(year, month), "%Y %m"))
 
 ggplot(monthly_stats, aes(x = date, y = mean_wbgt)) + geom_line()
 
+ggplot(monthly_stats, aes(x = date)) + geom_line(aes(y = mean_wbgt, color = "Mean")) +
+  geom_line(aes(y = min_wbgt, color = "Min")) + geom_line(aes(y = max_wbgt, color = "Max")) +
+  labs(x = "Date", y = "WBGT", color = "Statistic") + theme_minimal()
 
 # annual time series
 annual <- monthly_stats %>%
@@ -86,7 +154,7 @@ annual <- monthly_stats %>%
 ggplot(annual, aes(year, mean_wbgt)) + geom_line()
 
 
-# seasonal mean
+# annual time series split by seasonal
 monthly_stats <- monthly_stats %>%
   mutate(
     season = case_when(
@@ -124,6 +192,79 @@ extreme WBGT
 # percent of California area that has WBGT > 32
 ggplot(annual, aes(year, pct_over_32)) + geom_line() + 
   labs(y = "percent of California area that has WBGT > 32")
+```
+
+
+split data into northern and southern CA (split at 35.8 degrees north)
+```{r}
+# boundary latitude
+split_lat <- 35.8
+
+# create north/south extents
+south_ext <- ext(-125, -113, 32, split_lat)
+north_ext <- ext(-125, -113, split_lat, 43)
+
+# crop CA polygon into two regions
+ca_south <- crop(ca_shape, south_ext)
+ca_north <- crop(ca_shape, north_ext)
+
+# function to calculate stats
+calc_stats <- function(file, region_shape, region_name) {
+
+  r <- rast(file)
+
+  # project polygon if needed
+  region_shape <- project(region_shape, crs(r))
+
+  # crop + mask
+  r_region <- r |>
+    crop(region_shape) |>
+    mask(region_shape)
+
+  vals <- values(r_region, na.rm = TRUE)
+
+  tibble(
+    region = region_name,
+    min_wbgt = min(vals, na.rm = TRUE),
+    mean_wbgt = mean(vals, na.rm = TRUE),
+    max_wbgt = max(vals, na.rm = TRUE),
+    pct_over_32 = mean(vals > 32, na.rm = TRUE)
+  )
+}
+
+# loop through files
+regional_stats <- map2_dfr(
+  df_ca$file,
+  seq_len(nrow(df_ca)),
+  \(f, i) {
+
+    bind_rows(
+      calc_stats(f, ca_north, "Northern CA"),
+      calc_stats(f, ca_south, "Southern CA")
+    ) |>
+      mutate(
+        year = df_ca$year[i],
+        month = df_ca$month[i]
+      )
+  }
+)
+```
+
+
+time series split by northern and southern CA
+```{r}
+annual_region <- regional_stats %>%
+  group_by(region, year) %>%
+  summarize(
+    min_wbgt = min(min_wbgt),
+    mean_wbgt = mean(mean_wbgt),
+    max_wbgt = max(max_wbgt),
+    pct_over_32 = mean(pct_over_32),
+    .groups = "drop"
+  )
+
+ggplot(annual_region, aes(x = year, y = mean_wbgt, color = region)) + geom_line() +
+  labs(x = "Year", y = "Mean WBGT", color = "Region") + theme_minimal()
 ```
 
 
@@ -185,13 +326,23 @@ trend_ca <- mask(crop(trend_map, ca_shape), ca_shape)
 plot(trend_ca, main = "Annual Mean WBGT Trend (°C/year)")
 ```
 
+
+mean WBGT map, shows WBGT hotspots
+```{r}
+overall_mean <- app(annual_stack, mean)
+plot_ca <- mask(crop(overall_mean, ca_shape), ca_shape)
+plot(plot_ca, main="Mean WBGT")
+# Each grid cell represents the mean WBGT (of all years) at that location
+```
+
 Extreme WBGT trend map
 ```{r}
+# do similar to above but use percent over 32C instead of annual mean
 
 ```
 
 
 
-To do: grid-cell/regional level trends
-map of extreme WBGT across CA, comparisons across major regions (coastal, inland, valley, desert, mountains), identification of WBGT hotspots and areas with the largest increases over time
+
+map of extreme WBGT across CA, comparisons across major regions (coastal, inland, valley, desert, mountains)
 

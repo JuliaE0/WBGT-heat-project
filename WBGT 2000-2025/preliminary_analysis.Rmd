@@ -270,11 +270,12 @@ ggplot(annual_region, aes(x = year, y = mean_wbgt, color = region)) + geom_line(
 
 Annual mean WBGT trend map
 ```{r}
-years <- str_extract(basename(files), "\\d{4}") |> as.integer()
+years <- str_extract(basename(files_ca), "\\d{4}") |> as.integer()
 months <- str_extract(
-  basename(files),
-  "(?<=_)\\d{2}(?=\\.nc)"
+  basename(files_ca),
+  "(?<=_)\\d{2}(?=_CA\\.nc)"
 ) |> as.integer()
+
 
 # annual mean WBGT raster
 unique_years <- sort(unique(years))
@@ -283,7 +284,7 @@ annual_mean_list <- list()
 
 for(y in unique_years){
 
-  yr_files <- files[years == y]
+  yr_files <- files_ca[years == y]
 
   r <- rast(yr_files)
 
@@ -320,18 +321,14 @@ trend_map <- app(
 # plot trend map. Each pixel contains change in annual mean WBGT per year
 # Example interpretation: +0.35 °C/year means: Annual mean WBGT increased by 0.35°C every 10 years at that location.
 
-ca_shape <- vect("deriving urban/ca_grid/ERA5_Land_grid_CAfull.shp")
-# plot raster cropped to CA
-trend_ca <- mask(crop(trend_map, ca_shape), ca_shape)
-plot(trend_ca, main = "Annual Mean WBGT Trend (°C/year)")
+plot(trend_map, main = "Annual Mean WBGT Trend (°C/year)")
 ```
 
 
 mean WBGT map, shows WBGT hotspots
 ```{r}
 overall_mean <- app(annual_stack, mean)
-plot_ca <- mask(crop(overall_mean, ca_shape), ca_shape)
-plot(plot_ca, main="Mean WBGT")
+plot(overall_mean, main="Mean WBGT")
 # Each grid cell represents the mean WBGT (of all years) at that location
 ```
 

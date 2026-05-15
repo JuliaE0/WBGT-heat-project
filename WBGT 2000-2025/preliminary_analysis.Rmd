@@ -96,7 +96,7 @@ df_ca <- data.frame(
   file = files_ca
 )
 
-df_ca$year <- str_extract(basename(files), "\\d{4}") |> as.integer()
+df_ca$year <- str_extract(basename(files_ca), "\\d{4}") |> as.integer()
 
 df_ca$month <- str_extract(
   basename(files_ca),
@@ -325,12 +325,59 @@ plot(trend_map, main = "Annual Mean WBGT Trend (°C/year)")
 ```
 
 
+trend test: Mann-Kendall test and Theil-Sen slope
+```{r}
+library(rkt)
+
+files_ca <- list.files("wbgt_ca", pattern = "\\.nc$", full.names = TRUE)
+df_ca <- data.frame(file = files_ca)
+df_ca$year <- str_extract(basename(files_ca), "\\d{4}") |> as.integer()
+df_ca$month <- str_extract(basename(files_ca), "(?<=_)\\d{2}(?=_CA\\.nc)") |> as.integer()
+
+
+
+# state-wide mean per month
+df_ca$wbgt_mean <- map_dbl(df_ca$file, \(f) {
+  r <- rast(f)
+  global(r, mean, na.rm = TRUE)[1,1]
+})
+
+# create time variable. Note that "15" is used as an arbitrary day place-holder
+df_ca$date <- as.Date(paste(df_ca$year, df_ca$month, "15", sep = "-"))
+
+
+# seasonal MK trend test
+mk_seasonal <- rkt(
+  df_ca$year,
+  df_ca$wbgt_mean,  # state-wide mean of each month
+  block = df_ca$month)
+
+# results
+print(mk_seasonal)
+
+# Theil-Sen slope
+mk_seasonal$B
+
+# plot trend
+fit <- lm(wbgt_mean ~ date, data = df_ca)
+plot(df_ca$date, df_ca$wbgt_mean, pch = 16, xlab="date (monthly)", ylab="state-wide WBGT mean")
+abline(fit, col = "red", lwd = 2)
+```
+
 mean WBGT map, shows WBGT hotspots
 ```{r}
 overall_mean <- app(annual_stack, mean)
 plot(overall_mean, main="Mean WBGT")
 # Each grid cell represents the mean WBGT (of all years) at that location
 ```
+
+
+ambient temp spatial map -- use Tair from input files (represents t2m in Celsius)
+```{r}
+# mean ambient temp over all time steps
+
+```
+
 
 Extreme WBGT trend map
 ```{r}

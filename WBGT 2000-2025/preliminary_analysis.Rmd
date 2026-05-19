@@ -379,14 +379,156 @@ ambient temp spatial map -- use Tair from input files (represents t2m in Celsius
 ```
 
 
-Extreme WBGT trend map
-```{r}
-# do similar to above but use percent over 32C instead of annual mean
 
+
+Mann-Kendall test in several locations
+```{r}
+regions <- list(
+  LA = ext(-119, -117, 33.5, 34.5),
+  SoCAB = ext(-118.5, -116, 32.5, 34.5),
+  CentralValley = ext(-122.5, -119, 35, 39.5),
+  ImperialValley = ext(-116.5, -114.5, 32.5, 33.5)
+)
+
+regional_mean <- function(file, region_ext){
+  r <- rast(file)
+  r_crop <- crop(r, region_ext) # crop to region
+  global(r_crop, mean, na.rm=TRUE)[1,1] # regional mean
+}
+
+# monthly time series for each region
+region_results <- list()
+
+for(region_name in names(regions)){
+  cat("Processing:", region_name, "\n")
+  
+  vals <- map_dbl(
+    df_ca$file,
+    \(f) regional_mean(f, regions[[region_name]])
+  )
+
+  tmp <- df_ca |>
+    select(file, year, month) |>
+    mutate(
+      region = region_name,
+      wbgt_mean = vals
+    )
+
+  region_results[[region_name]] <- tmp
+}
+
+regional_df <- bind_rows(region_results)
+
+
+
+############### seasonal Mann-Kendall by region
+library(rkt)
+
+mk_results <- regional_df |>
+  group_by(region) |>
+  group_modify(\(d, g){
+
+    mk <- rkt(
+      d$year,
+      d$wbgt_mean,
+      block = d$month
+    )
+
+    data.frame(
+      tau = mk$tau,
+      pval = mk$sl,
+      slope = mk$B
+    )
+  })
+
+print(mk_results)
+
+
+# plot regional time series
+regional_df$date <- as.Date(paste(regional_df$year, regional_df$month, "15", sep = "-"))
+
+ggplot(regional_df,
+       aes(date, wbgt_mean, color=region)) +
+
+  geom_line(alpha=0.6) +
+
+  geom_smooth(
+    method="lm",
+    se=FALSE,
+    linewidth=1.2
+  ) +
+
+  labs(
+    title="Monthly Mean WBGT Trends by Region",
+    x="Year",
+    y="Mean WBGT (°C)"
+  ) +
+
+  theme_minimal()
+```
+
+
+Mann-Kendall on annual statewide WBGT
+```{r}
+annual_ca <- monthly_stats |>
+  group_by(year) |>
+  summarize(mean_wbgt = mean(mean_wbgt, na.rm=TRUE))
+
+# MK test
+library(Kendall)
+
+mk_annual <- MannKendall(annual_ca$mean_wbgt)
+print(mk_annual)
+
+# Sen slope
+library(trend)
+
+sen_annual <- sens.slope(annual_ca$mean_wbgt)
+print(sen_annual)
+
+# plot annual trend
+ggplot(annual_ca,
+       aes(year, mean_wbgt)) +
+
+  geom_line() +
+
+  geom_smooth(
+    method="lm",
+    se=FALSE,
+    color="red"
+  ) +
+
+  labs(
+    title="Annual Statewide Mean WBGT",
+    x="Year",
+    y="WBGT (°C)"
+  ) +
+
+  theme_minimal()
+```
+
+
+Seasonal MK on warm months only
+```{r}
+warm_df <- monthly_stats |>
+  filter(month %in% 5:9)
+
+warm_df$date <- as.Date(paste(warm_df$year, warm_df$month, "15", sep = "-"))
+
+mk_warm <- rkt(
+  warm_df$year,
+  warm_df$mean_wbgt,
+  block = warm_df$month
+)
+
+print(mk_warm)
+
+ggplot(warm_df, aes(date, mean_wbgt)) +
+  geom_line(alpha=0.7) +
+  geom_smooth(method="lm", se=FALSE, color="red") +
+  labs(title="Warm-Season Statewide WBGT", x="Year", y="WBGT (°C)") + theme_minimal()
 ```
 
 
 
-
-map of extreme WBGT across CA, comparisons across major regions (coastal, inland, valley, desert, mountains)
 

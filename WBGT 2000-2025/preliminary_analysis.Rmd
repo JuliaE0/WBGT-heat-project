@@ -530,5 +530,73 @@ ggplot(warm_df, aes(date, mean_wbgt)) +
 ```
 
 
+## Compare with Spangler's
+Note that Heatmetrics is from 2000 to 2020
+```{r}
+library(sf)
+library(tigris)
+library(exactextractr)
+library(lubridate)
+
+# load heatmetrics data (from Spangler et al.) -- county-level data
+heatvars <- readRDS("UNWEIGHTED_Heatvars_County_2000-2020_v1.2.Rds")
+
+# select only counties in CA
+counties_sf <- counties(cb = TRUE, year = 2020) %>%  st_as_sf()
+map_data <- counties_sf %>% left_join(heatvars, by = c("GEOID" = "StCoFIPS"))
+heatvars_ca <- map_data %>% filter(STATEFP == "06")  # only California
+```
+
+
+Time series from Spangler's data (in CA)
+
+```{r}
+# aggregate by month and calculate state-wide monthly mean, min, max
+library(data.table)
+
+heatvars_ca_small <- heatvars_ca[, c("Date", "WBGTmean_C", "WBGTmin_C", "WBGTmax_C")]
+heatvars_ca_small$Month <- as.Date(format(heatvars_ca_small$Date, "%Y-%m-01"))
+dt <- as.data.table(heatvars_ca_small)
+
+statewide_monthly <- dt[, .(
+  WBGTavg_mean = mean(WBGTmean_C, na.rm = TRUE),
+  WBGTavg_min  = min(WBGTmin_C, na.rm = TRUE),
+  WBGTavg_max  = max(WBGTmax_C, na.rm = TRUE)
+), by = Month]
+
+
+# monthly mean
+ggplot(statewide_monthly, aes(x = Month, y = WBGTavg_mean)) +
+  geom_line(color = "steelblue") +
+  labs(
+    title = "California Statewide Monthly Mean WBGT",
+    x = "Month",
+    y = "WBGT Mean (°C)"
+  ) +
+  theme_minimal()
+
+# monthly min, mean, max
+ggplot(statewide_monthly, aes(x = Month)) + geom_line(aes(y = WBGTavg_mean, color = "Mean")) +
+  geom_line(aes(y = WBGTavg_min, color = "Min")) + geom_line(aes(y = WBGTavg_max, color = "Max")) +
+  labs(x = "Date", y = "WBGT", color = "Statistic") + theme_minimal()
+
+
+# annual time series
+statewide_annual <- statewide_monthly[, .(
+  WBGTannual_mean = mean(WBGTavg_mean, na.rm = TRUE),
+  WBGTannual_min  = min(WBGTavg_min, na.rm = TRUE),
+  WBGTannual_max  = max(WBGTavg_max, na.rm = TRUE)
+), by = .(Year = year(Month))]
+
+ggplot(statewide_annual, aes(x = Year, y = WBGTannual_mean)) +
+  geom_line() +
+  labs(
+    title = "California Statewide Annual Mean WBGT",
+    x = "Year",
+    y = "Annual Mean WBGT (°C)"
+  ) +
+  theme_minimal()
+```
+
 
 

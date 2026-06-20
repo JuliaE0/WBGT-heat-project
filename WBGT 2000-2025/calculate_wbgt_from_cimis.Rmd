@@ -1,0 +1,105 @@
+---
+title: "calculate_wbgt_from_cimis"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## calculate WBGT from CIMIS weather station data
+
+
+```{r}
+library(heatmetrics)
+```
+
+```{r}
+# load CIMIS data for 2000
+files <- list.files(path = "cimis_hourly/2000", pattern = "\\.csv$", recursive = TRUE, 
+                    full.names = TRUE)
+data_list <- lapply(files, read.csv)
+
+# combine files or not??
+```
+
+# work with just Station 2 for now
+```{r}
+# create a look-up table
+lookup <- data.frame(file = files, station = sapply(data_list, function(df) unique(df$Station)[1]))
+
+# read station 2 file
+station2 <- read.csv(lookup$file[lookup$station==2])
+```
+
+# Preprocess WBGT inputs
+```{r, warning=FALSE}
+# note that missing values from CIMIS become NA in the preprocessed dataframe
+
+# create dataframe for station 2 WBGT inputs
+station2_inputs <- data.frame(row.names = seq_len(nrow(station2)))
+
+# year
+station2_inputs$year <- as.integer(format(as.Date(station2$Date), "%Y"))
+
+# month
+station2_inputs$month <- as.integer(format(as.Date(station2$Date), "%m"))
+
+# day
+station2_inputs$day <- as.integer(format(as.Date(station2$Date), "%d"))
+
+# hour
+station2_inputs$hour <- station2$Hour/100 - 1
+
+# dday
+station2_inputs$dday <- station2$Julian + (station2$Hour/100 - 1) / 24
+
+# lat
+station2_inputs$lat <- as.numeric(sub(".* / ", "", station2$latitude))
+
+# lon
+station2_inputs$lon <- as.numeric(sub(".* /", "", station2$longitude))
+
+# solar
+station2_inputs$solar <- as.numeric(sub(".*'Value': '(-?[0-9.]+)'.*", "\\1", station2$HlySolRad))
+
+# cza: caluclate using heatmetrics calc_cza_int()
+station2_inputs$cza <- calc_cza_int(station2_inputs$lat, station2_inputs$lon, station2_inputs$year,
+                                    station2_inputs$month, station2_inputs$day, station2_inputs$hour)
+
+# fdir: don't know which calculation to use
+
+# pres: calculate barometric pressure (hPa) from elevation in meters
+elev_m <- station2$elevation_ft * 0.3048
+station2_inputs$pres <- 1013.25*(1+(-0.0065/288.15)*(elev_m))^(-9.80665*0.0289644/(8.31432*-0.0065))
+
+# pres: take sp from ERA5-Land
+
+# Tair
+station2_inputs$Tair <- as.numeric(sub(".*'Value': '(-?[0-9.]+)'.*", "\\1", station2$HlyAirTmp))
+
+# relhum
+station2_inputs$relhum <- as.numeric(sub(".*'Value': '(-?[0-9.]+)'.*", "\\1", station2$HlyRelHum))
+
+# speed
+station2_inputs$speed <- as.numeric(sub(".*'Value': '(-?[0-9.]+)'.*", "\\1", station2$HlyWindSpd))
+
+# zspeed
+station2_inputs$zspeed <- 10
+
+# dT
+station2_inputs$dT <- -0.052
+
+# urban: need to derive from NLCD
+
+```
+
+```{r}
+
+```
+
+
+
+
+
+

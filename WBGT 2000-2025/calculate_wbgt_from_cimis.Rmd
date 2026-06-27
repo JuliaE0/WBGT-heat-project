@@ -120,7 +120,11 @@ station2_inputs$dT <- -0.052
 
 Calculate WBGT for Jan 2000
 ```{r}
-
+input1 <- as.list(station2_inputs[1, ]) # first timestep of station 2 for Jan 2000
+input1[[length(input1) + 1]] <- 0  # arbitrary "urban" value to test function for now
+wbgt(input1$year, input1$month, input1$dday, input1$lat, input1$lon, input1$solar, input1$cza,
+     input1$fdir, input1$pres, input1$Tair, input1$relhum, input1$speed, input1$zspeed, 
+     input1$dT, input1[[19]])
 ```
 
 

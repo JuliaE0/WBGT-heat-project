@@ -97,7 +97,7 @@ station2_inputs$pres <- 1013.25*(1+(-0.0065/288.15)*(elev_m))^(-9.80665*0.028964
 # Open the ERA5_land for 2000_01, get surface pressure variable (sp)
 sp <- rast("era5_land_2000_01.nc", subds = "sp")
 point <- data.frame(x = station2_inputs$lon[1], y = station2_inputs$lat[1])
-station2_inputs$pres2 <- as.numeric(pres2[1, -1])
+station2_inputs$pres2 <- as.numeric(extract(sp, point)[1, -1])[-1] # drop first hr of ERA5-Land to match
 
 # Tair
 station2_inputs$Tair <- as.numeric(sub(".*'Value': '(-?[0-9.]+)'.*", "\\1", station2_jan$HlyAirTmp))
@@ -114,17 +114,34 @@ station2_inputs$zspeed <- 10
 # dT
 station2_inputs$dT <- -0.052
 
-# urban: need to derive from NLCD
-
+# urban: derived from NLCD on 0.1 degree grid
+urban <- rast("deriving urban 0.01/urban_2000.nc")
+point <- data.frame(x = station2_inputs$lon[1], y = station2_inputs$lat[1])
+station2_inputs$urban <- ifelse(is.na(extract(urban, point)[1, 2]), 0, extract(urban, point)[1, 2])
 ```
 
 Calculate WBGT for Jan 2000
 ```{r}
-input1 <- as.list(station2_inputs[1, ]) # first timestep of station 2 for Jan 2000
-input1[[length(input1) + 1]] <- 0  # arbitrary "urban" value to test function for now
-wbgt(input1$year, input1$month, input1$dday, input1$lat, input1$lon, input1$solar, input1$cza,
-     input1$fdir, input1$pres, input1$Tair, input1$relhum, input1$speed, input1$zspeed, 
-     input1$dT, input1[[19]])
+
+# loop WBGT calculation over rows of station2_inputs
+station2_inputs$wbgt <- mapply(
+  wbgt,
+  station2_inputs$year,
+  station2_inputs$month,
+  station2_inputs$dday,
+  station2_inputs$lat,
+  station2_inputs$lon,
+  station2_inputs$solar,
+  station2_inputs$cza,
+  station2_inputs$fdir,
+  station2_inputs$pres,
+  station2_inputs$Tair,
+  station2_inputs$relhum,
+  station2_inputs$speed,
+  station2_inputs$zspeed,
+  station2_inputs$dT,
+  station2_inputs$urban
+)
 ```
 
 

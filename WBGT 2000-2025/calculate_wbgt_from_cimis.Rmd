@@ -122,7 +122,6 @@ station2_inputs$urban <- ifelse(is.na(extract(urban, point)[1, 2]), 0, extract(u
 
 Calculate WBGT for Jan 2000
 ```{r}
-
 # loop WBGT calculation over rows of station2_inputs
 station2_inputs$wbgt <- mapply(
   wbgt,

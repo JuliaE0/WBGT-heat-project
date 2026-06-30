@@ -120,7 +120,7 @@ point <- data.frame(x = station2_inputs$lon[1], y = station2_inputs$lat[1])
 station2_inputs$urban <- ifelse(is.na(extract(urban, point)[1, 2]), 0, extract(urban, point)[1, 2])
 ```
 
-Calculate WBGT for Jan 2000
+Calculate WBGT for Jan 2000, and sensitivity analysis
 ```{r}
 # loop WBGT calculation over rows of station2_inputs
 station2_inputs$wbgt <- mapply(
@@ -142,8 +142,48 @@ station2_inputs$wbgt <- mapply(
   station2_inputs$urban
 )
 
-# sensitivity analysis: using other derivation of fdir and pres
-station2_inputs$wbgt_sens <- mapply(
+# with fdir2
+station2_inputs$wbgt2 <- mapply(
+  wbgt,
+  station2_inputs$year,
+  station2_inputs$month,
+  station2_inputs$dday,
+  station2_inputs$lat,
+  station2_inputs$lon,
+  station2_inputs$solar,
+  station2_inputs$cza,
+  station2_inputs$fdir2,
+  station2_inputs$pres,
+  station2_inputs$Tair,
+  station2_inputs$relhum,
+  station2_inputs$speed,
+  station2_inputs$zspeed,
+  station2_inputs$dT,
+  station2_inputs$urban
+)
+
+# with pres2
+station2_inputs$wbgt3 <- mapply(
+  wbgt,
+  station2_inputs$year,
+  station2_inputs$month,
+  station2_inputs$dday,
+  station2_inputs$lat,
+  station2_inputs$lon,
+  station2_inputs$solar,
+  station2_inputs$cza,
+  station2_inputs$fdir,
+  station2_inputs$pres2,
+  station2_inputs$Tair,
+  station2_inputs$relhum,
+  station2_inputs$speed,
+  station2_inputs$zspeed,
+  station2_inputs$dT,
+  station2_inputs$urban
+)
+
+# with fdir2 and pres2
+station2_inputs$wbgt4 <- mapply(
   wbgt,
   station2_inputs$year,
   station2_inputs$month,
@@ -163,15 +203,24 @@ station2_inputs$wbgt_sens <- mapply(
 )
 
 # compare two different WBGT values
-diff <- station2_inputs$wbgt_sens - station2_inputs$wbgt
+diff <- station2_inputs$wbgt_4 - station2_inputs$wbgt
 
 summary(diff)
 
 sqrt(mean(diff^2, na.rm = TRUE))  # RMSE
 
-cor(station2_inputs$wbgt, station2_inputs$wbgt_sens, use = "complete.obs")  # correlation
+# correlation
+cor(station2_inputs$wbgt, station2_inputs$wbgt2, use = "complete.obs")
+cor(station2_inputs$wbgt, station2_inputs$wbgt3, use = "complete.obs")
+cor(station2_inputs$wbgt, station2_inputs$wbgt4, use = "complete.obs")
 
-plot(station2_inputs$wbgt, station2_inputs$wbgt_sens, xlab = "WBGT", ylab = "WBGT_sens")
+plot(station2_inputs$wbgt, station2_inputs$wbgt2, xlab = "WBGT", ylab = "WBGT with fdir2")
+abline(0, 1, col = "red", lwd = 2)
+
+plot(station2_inputs$wbgt, station2_inputs$wbgt3, xlab = "WBGT", ylab = "WBGT with pres2")
+abline(0, 1, col = "red", lwd = 2)
+
+plot(station2_inputs$wbgt, station2_inputs$wbgt4, xlab = "WBGT", ylab = "WBGT with fdir2, pres2")
 abline(0, 1, col = "red", lwd = 2)
 ```
 

@@ -232,7 +232,6 @@ CIMIS files one per station per year
 ```{r}
 # load CIMIS data for all years 2000 to 2025
 files <- list.files(path = "cimis_hourly", pattern = "\\.csv$", recursive = TRUE, full.names = TRUE)
-data_list <- lapply(files, read.csv)
 ```
 
 ```{r}
@@ -243,14 +242,23 @@ library(terra)
 library(heatmetrics)
 library(purrr)
 
-# Load urban raster
-urban <- rast("deriving urban 0.01/urban_2000.nc")
+# load urban rasters
+years <- 2000:2025
+urban_cache <- setNames(
+  lapply(years, function(y) {
+    rast(paste0("urban_0.01/urban_", y, ".nc"))
+  }),
+  years)
 
 process_station <- function(file){
 
   # Read station data
   dat <- read.csv(file)
-
+  
+  # read urban file
+  file_year <- as.character(gsub(".*_(\\d{4})\\.csv", "\\1", file))
+  urban <- urban_cache[[file_year]]
+  
   # Create input dataframe
   inputs <- data.frame(row.names = seq_len(nrow(dat)))
 
@@ -269,7 +277,7 @@ process_station <- function(file){
   inputs$elev_m <- dat$elevation_ft * 0.3048
 
   # need to drop rows with missing inputs because CIMIS has some missing values
-  inputs <- na.omit(inputs)
+  inputs <- inputs[complete.cases(inputs), ]
   
   inputs$cza <- calc_cza_int(inputs$lat, inputs$lon, inputs$year, inputs$month, inputs$day,
                              inputs$hour)
@@ -281,7 +289,7 @@ process_station <- function(file){
   point <- data.frame(x = inputs$lon[1], y = inputs$lat[1])
   u <- extract(urban, point)[1,2]
   inputs$urban <- ifelse(is.na(u), 0, u)
-
+  
   # Calculate WBGT
   inputs$wbgt <- pmap_dbl(
   list(
@@ -311,8 +319,13 @@ process_station <- function(file){
   write.csv(inputs, outfile, row.names = FALSE)
 }
 
-# Calculate WBGT on all CIMIS files
+# Calculate WBGT on all CIMIS files -- skip files that were already processed
 for (f in files) {
+  outfile <- sub("^cimis_hourly", "CIMIS_WBGT", f)
+  if (file.exists(outfile)) {
+    cat("Skipping (already exists):", outfile, "\n")
+    next
+  }
   cat("Processing:", f, "\n")
   process_station(f)
 }

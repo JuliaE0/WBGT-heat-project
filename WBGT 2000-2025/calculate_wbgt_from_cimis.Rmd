@@ -232,6 +232,17 @@ CIMIS files one per station per year
 ```{r}
 # load CIMIS data for all years 2000 to 2025
 files <- list.files(path = "cimis_hourly", pattern = "\\.csv$", recursive = TRUE, full.names = TRUE)
+
+# number of rows of each file
+row_counts <- sapply(files, function(f) nrow(read.csv(f)))
+file_rows <- data.frame(file = files, rows = row_counts)
+
+# looking for files missing hours
+library(dplyr)
+files_missing_hours <- file_rows |> filter(!rows %in% c(8760, 8784))  # not full year or leap year
+
+
+files_missing_hours
 ```
 
 ```{r}
@@ -241,6 +252,9 @@ files <- list.files(path = "cimis_hourly", pattern = "\\.csv$", recursive = TRUE
 library(terra)
 library(heatmetrics)
 library(purrr)
+
+# load CIMIS data for all years 2000 to 2025
+files <- list.files(path = "cimis_hourly", pattern = "\\.csv$", recursive = TRUE, full.names = TRUE)
 
 # load urban rasters
 years <- 2000:2025
@@ -329,6 +343,12 @@ for (f in files) {
   cat("Processing:", f, "\n")
   process_station(f)
 }
+```
+
+
+
+```{r}
+
 ```
 
 

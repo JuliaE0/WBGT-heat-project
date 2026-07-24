@@ -457,9 +457,114 @@ ggplot() +
   theme_bw()
 ```
 
-Similar plot for average WBGT that was calulated from ERA5-Land and ERA5
+Similar plot for average WBGT that was calculated from ERA5-Land and ERA5
 ```{r}
+library(terra)
 
+##### open wbgt cropped to CA data
+files_ca <- list.files(
+  "wbgt_ca",
+  pattern = "\\.nc$",
+  full.names = TRUE
+)
+
+df_ca <- data.frame(
+  file = files_ca
+)
+
+df_ca$year <- str_extract(basename(files_ca), "\\d{4}") |> as.integer()
+
+df_ca$month <- str_extract(
+  basename(files_ca),
+  "(?<=_)\\d{2}(?=_CA\\.nc)"
+) |> as.integer()
+
+
+########## get annual means
+years <- str_extract(basename(files_ca), "\\d{4}") |> as.integer()
+months <- str_extract(
+  basename(files_ca),
+  "(?<=_)\\d{2}(?=_CA\\.nc)"
+) |> as.integer()
+
+
+# annual mean WBGT raster
+unique_years <- sort(unique(years))
+
+annual_mean_list <- list()
+
+for(y in unique_years){
+
+  yr_files <- files_ca[years == y]
+
+  r <- rast(yr_files)
+
+  # annual mean across all timesteps. Mean WBGT for that year at every grid cell.
+  annual_mean <- app(r, mean, na.rm=TRUE)
+
+  annual_mean_list[[as.character(y)]] <- annual_mean
+}
+
+# stack annual rasters
+annual_stack <- rast(annual_mean_list)  # Build a time series per pixel
+
+
+####### plot overall mean
+overall_mean <- app(annual_stack, mean)
+plot(overall_mean, main="Mean WBGT")
+# Each grid cell represents the mean WBGT (of all years) at that location
 ```
+
+Plot both on the same color scale
+```{r}
+library(viridisLite)
+cols <- viridis(100)
+
+common_limits <- range(
+  values(overall_mean),
+  station_means$mean_wbgt,
+  na.rm = TRUE
+)
+
+######## CIMIS WBGT
+ggplot() +
+  geom_polygon(
+    data = ca_map,
+    aes(long, lat, group = group),
+    fill = "gray95",
+    color = "gray40"
+  ) +
+  geom_point(
+    data = station_means,
+    aes(
+      x = lon,
+      y = lat,
+      fill = mean_wbgt,
+      size = n
+    ),
+    shape = 21,
+    color = "black",   # border color
+    stroke = 0.5       # border thickness
+  ) +
+  scale_fill_gradientn(colours = cols, limits = common_limits, name = "Mean WBGT") +
+  scale_size_continuous(
+    name = "Hours",
+    range = c(2, 8)
+  ) +
+  coord_fixed(1.3) +
+  labs(
+    x = "Longitude",
+    y = "Latitude",
+    title = "Average WBGT at CIMIS Stations (All Years)"
+  ) +
+  theme_bw()
+
+######## ERA5-Land WBGT
+plot(overall_mean, col = cols, range = common_limits, legend = TRUE, main = "Mean WBGT")
+```
+
+
+
+
 
 

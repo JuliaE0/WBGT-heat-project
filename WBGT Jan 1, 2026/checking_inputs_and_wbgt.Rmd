@@ -1,0 +1,311 @@
+---
+title: "inputs preprocessing part 2"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, results='asis', message=FALSE, warning=FALSE, collapse=TRUE)
+```
+
+```{r}
+library(ncdf4)
+library(terra)
+library(reticulate)
+```
+
+###  checking preprocessed files
+```{r}
+# open the part 2 preprocessed file
+inputs_p2 <- nc_open("wbgt_inputs_complete/wbgt_inputs_2026_01.nc") 
+
+names(inputs_p2$var)
+dim(ncvar_get(inputs_p2, "fdir_frac")) # R shows dimensions as longitude x latitude x times
+ncatt_get(inputs_p2, "valid_time", "units")
+```
+
+```{r}
+shp <- vect("ca_grid/ERA5_Land_grid_CAfull.shp")
+
+r <- rast("wbgt_inputs_complete/wbgt_inputs_2026_01.nc", subds = "ssrd_W")
+time_raw <- ncvar_get(inputs_p2, "valid_time")
+time_vals <- as.POSIXct(time_raw, origin = "1970-01-01", tz = "UTC")
+time(r) <- time_vals
+t_index <- which(time_vals == as.POSIXct("2026-01-01 18:00", tz="UTC"))
+r_slice <- r[[t_index]]
+r_crop <- crop(r_slice, shp)
+r_mask <- mask(r_crop, shp)
+plot(r_mask)
+title(main = "ssrd_W at 2026-01-01 18:00 UTC (CA cropped)", line = 3)
+
+r <- rast("wbgt_inputs_complete/wbgt_inputs_2026_01.nc", subds = "fdir_frac")
+time_raw <- ncvar_get(inputs_p2, "valid_time")
+time_vals <- as.POSIXct(time_raw, origin = "1970-01-01", tz = "UTC")
+time(r) <- time_vals
+t_index <- which(time_vals == as.POSIXct("2026-01-01 18:00", tz="UTC"))
+r_slice <- r[[t_index]]
+r_crop <- crop(r_slice, shp)
+r_mask <- mask(r_crop, shp)
+plot(r_mask)
+title(main = "fdir_frac at 2026-01-01 18:00 UTC", line=3)
+
+r <- rast("wbgt_inputs_complete/wbgt_inputs_2026_01.nc", subds = "pres")
+time_raw <- ncvar_get(inputs_p2, "valid_time")
+time_vals <- as.POSIXct(time_raw, origin = "1970-01-01", tz = "UTC")
+time(r) <- time_vals
+t_index <- which(time_vals == as.POSIXct("2026-01-01 18:00", tz="UTC"))
+r_slice <- r[[t_index]]
+r_crop <- crop(r_slice, shp)
+r_mask <- mask(r_crop, shp)
+plot(r_mask)
+title(main = "pres at 2026-01-01 18:00 UTC", line=3)
+
+r <- rast("wbgt_inputs_complete/wbgt_inputs_2026_01.nc", subds = "Tair")
+time_raw <- ncvar_get(inputs_p2, "valid_time")
+time_vals <- as.POSIXct(time_raw, origin = "1970-01-01", tz = "UTC")
+time(r) <- time_vals
+t_index <- which(time_vals == as.POSIXct("2026-01-01 18:00", tz="UTC"))
+r_slice <- r[[t_index]]
+r_crop <- crop(r_slice, shp)
+r_mask <- mask(r_crop, shp)
+plot(r_mask)
+title(main = "Tair at 2026-01-01 18:00 UTC", line=3)
+
+r <- rast("wbgt_inputs_complete/wbgt_inputs_2026_01.nc", subds = "relhum")
+time_raw <- ncvar_get(inputs_p2, "valid_time")
+time_vals <- as.POSIXct(time_raw, origin = "1970-01-01", tz = "UTC")
+time(r) <- time_vals
+t_index <- which(time_vals == as.POSIXct("2026-01-01 18:00", tz="UTC"))
+r_slice <- r[[t_index]]
+r_crop <- crop(r_slice, shp)
+r_mask <- mask(r_crop, shp)
+plot(r_mask)
+title(main = "relhum at 2026-01-01 18:00 UTC", line=3)
+
+r <- rast("wbgt_inputs_complete/wbgt_inputs_2026_01.nc", subds = "speed")
+time_raw <- ncvar_get(inputs_p2, "valid_time")
+time_vals <- as.POSIXct(time_raw, origin = "1970-01-01", tz = "UTC")
+time(r) <- time_vals
+t_index <- which(time_vals == as.POSIXct("2026-01-01 18:00", tz="UTC"))
+r_slice <- r[[t_index]]
+r_crop <- crop(r_slice, shp)
+r_mask <- mask(r_crop, shp)
+plot(r_mask)
+title(main = "speed at 2026-01-01 18:00 UTC", line=3)
+
+r <- rast("wbgt_inputs_complete/wbgt_inputs_2026_01.nc", subds = "urban")
+time_raw <- ncvar_get(inputs_p2, "valid_time")
+time_vals <- as.POSIXct(time_raw, origin = "1970-01-01", tz = "UTC")
+time(r) <- time_vals
+t_index <- which(time_vals == as.POSIXct("2026-01-01 18:00", tz="UTC"))
+r_slice <- r[[t_index]]
+r_crop <- crop(r_slice, shp)
+r_mask <- mask(r_crop, shp)
+plot(r_mask)
+title(main = "urban at 2026-01-01 18:00 UTC", line=3)
+
+r <- rast("wbgt_inputs_complete/wbgt_inputs_2026_01.nc", subds = "v_cza")
+time_raw <- ncvar_get(inputs_p2, "valid_time")
+time_vals <- as.POSIXct(time_raw, origin = "1970-01-01", tz = "UTC")
+time(r) <- time_vals
+t_index <- which(time_vals == as.POSIXct("2026-01-01 18:00", tz="UTC"))
+r_slice <- r[[t_index]]
+r_crop <- crop(r_slice, shp)
+r_mask <- mask(r_crop, shp)
+plot(r_mask)
+title(main = "v_cza at 2026-01-01 18:00 UTC", line=3)
+
+r <- rast("wbgt_inputs_complete/wbgt_inputs_2026_01.nc", subds = "v_fdir")
+time_raw <- ncvar_get(inputs_p2, "valid_time")
+time_vals <- as.POSIXct(time_raw, origin = "1970-01-01", tz = "UTC")
+time(r) <- time_vals
+t_index <- which(time_vals == as.POSIXct("2026-01-01 18:00", tz="UTC"))
+r_slice <- r[[t_index]]
+r_crop <- crop(r_slice, shp)
+r_mask <- mask(r_crop, shp)
+plot(r_mask)
+title(main = "v_fdir at 2026-01-01 18:00 UTC", line=3)
+
+r <- rast("wbgt_inputs_complete/wbgt_inputs_2026_01.nc", subds = "v_solarRet")
+time_raw <- ncvar_get(inputs_p2, "valid_time")
+time_vals <- as.POSIXct(time_raw, origin = "1970-01-01", tz = "UTC")
+time(r) <- time_vals
+t_index <- which(time_vals == as.POSIXct("2026-01-01 18:00", tz="UTC"))
+r_slice <- r[[t_index]]
+r_crop <- crop(r_slice, shp)
+r_mask <- mask(r_crop, shp)
+plot(r_mask)
+title(main = "v_solarRet at 2026-01-01 18:00 UTC", line=3)
+
+nc_close(inputs_p2)
+```
+
+
+###  checking WBGT files
+```{r}
+# open the wbgt 2026-01 file
+wbgt <- nc_open("wbgt/wbgt_2026_01.nc") 
+
+names(wbgt$var)
+dim(ncvar_get(wbgt, "wbgt")) # R shows dimensions as longitude x latitude x times
+ncatt_get(wbgt, "valid_time", "units")
+
+summary(ncvar_get(wbgt, "wbgt"))
+
+### subset Jan 1 from 2025 wbgt
+wbgt_2025_01 <- nc_open("wbgt_2025_01.nc")
+time_raw_2025 <- ncvar_get(wbgt_2025_01, "valid_time")
+time_units_2025 <- ncatt_get(wbgt_2025_01, "valid_time", "units")$value
+time_vals_2025 <- as.POSIXct(time_raw_2025, origin = "1970-01-01", tz = "UTC")
+idx_2025_jan1 <- which(as.Date(time_vals_2025, tz = "UTC") == as.Date("2025-01-01"))
+
+wbgt_2025_all <- ncvar_get(wbgt_2025_01, "wbgt")
+wbgt_2026_all <- ncvar_get(wbgt, "wbgt")
+wbgt_2025_jan1 <- wbgt_2025_all[, , idx_2025_jan1]
+wbgt_2026_jan1 <- wbgt_2026_all[, , 1:24]
+
+dim(wbgt_2025_jan1)
+dim(wbgt_2026_jan1)
+
+### compare values
+summary(as.vector(wbgt_2025_jan1))
+summary(as.vector(wbgt_2026_jan1))
+
+```
+
+```{r}
+shp <- vect("ca_grid/ERA5_Land_grid_CAfull.shp")
+wbgt <- rast("wbgt/wbgt_2026_01.nc", subds = "wbgt")
+wbgt_ca <- crop(wbgt, shp)
+wbgt_ca <- mask(wbgt_ca, shp)
+
+vals <- values(wbgt_ca, mat = TRUE)
+vals <- as.vector(vals)
+summary(vals)
+```
+
+
+```{r}
+# crop to California shape and plot
+
+shp <- vect("ca_grid/ERA5_Land_grid_CAfull.shp")
+wbgt <- nc_open("wbgt/wbgt_2026_01.nc") 
+
+time_raw <- ncvar_get(wbgt, "valid_time")
+time_units <- ncatt_get(wbgt, "valid_time", "units")$value
+time_vals <- as.POSIXct(time_raw, origin="1970-01-01", tz="UTC")
+
+r <- rast("wbgt/wbgt_2026_01.nc", subds = "wbgt")
+time_raw <- ncvar_get(wbgt, "valid_time")
+time_vals <- as.POSIXct(time_raw, origin = "1970-01-01", tz = "UTC")
+time(r) <- time_vals
+t_index <- which(time_vals == as.POSIXct("2026-01-01 18:00", tz="UTC"))
+r_slice <- r[[t_index]]
+r_crop <- crop(r_slice, shp)
+r_mask <- mask(r_crop, shp)
+plot(r_mask)
+title(main = "wbgt at 2026-01-01 18:00 UTC", line=3)
+
+nc_close(wbgt)
+```
+
+```{r}
+# California shape
+shp <- vect("ca_grid/ERA5_Land_grid_CAfull.shp")
+
+
+# =========================
+# 2025: January 1, 18:00 UTC
+# =========================
+
+wbgt_2025 <- nc_open("wbgt_2025_01.nc")
+
+time_raw_2025 <- ncvar_get(wbgt_2025, "valid_time")
+time_vals_2025 <- as.POSIXct(
+  time_raw_2025,
+  origin = "1970-01-01",
+  tz = "UTC"
+)
+
+r_2025 <- rast(
+  "wbgt_2025_01.nc",
+  subds = "wbgt"
+)
+
+time(r_2025) <- time_vals_2025
+
+t_index_2025 <- which(
+  time_vals_2025 == as.POSIXct("2025-01-01 18:00", tz = "UTC")
+)
+
+r_2025_slice <- r_2025[[t_index_2025]]
+r_2025_crop <- crop(r_2025_slice, shp)
+r_2025_mask <- mask(r_2025_crop, shp)
+
+nc_close(wbgt_2025)
+
+
+# =========================
+# 2026: January 1, 18:00 UTC
+# =========================
+
+wbgt_2026 <- nc_open("wbgt/wbgt_2026_01.nc")
+
+time_raw_2026 <- ncvar_get(wbgt_2026, "valid_time")
+time_vals_2026 <- as.POSIXct(
+  time_raw_2026,
+  origin = "1970-01-01",
+  tz = "UTC"
+)
+
+r_2026 <- rast(
+  "wbgt/wbgt_2026_01.nc",
+  subds = "wbgt"
+)
+
+time(r_2026) <- time_vals_2026
+
+t_index_2026 <- which(
+  time_vals_2026 == as.POSIXct("2026-01-01 18:00", tz = "UTC")
+)
+
+r_2026_slice <- r_2026[[t_index_2026]]
+r_2026_crop <- crop(r_2026_slice, shp)
+r_2026_mask <- mask(r_2026_crop, shp)
+
+nc_close(wbgt_2026)
+
+
+# =========================
+# SAME COLOR SCALE
+# =========================
+
+# Use the combined range from both years
+common_min <- min(
+  min(values(r_2025_mask), na.rm = TRUE),
+  min(values(r_2026_mask), na.rm = TRUE)
+)
+
+common_max <- max(
+  max(values(r_2025_mask), na.rm = TRUE),
+  max(values(r_2026_mask), na.rm = TRUE)
+)
+
+# Plot side-by-side using identical color limits
+par(mfrow = c(1, 2))
+
+plot(
+  r_2025_mask,
+  zlim = c(common_min, common_max),
+  main = "WBGT\nJanuary 1, 2025 18:00 UTC"
+)
+
+plot(
+  r_2026_mask,
+  zlim = c(common_min, common_max),
+  main = "WBGT\nJanuary 1, 2026 18:00 UTC"
+)
+
+par(mfrow = c(1, 1))
+```
+
+

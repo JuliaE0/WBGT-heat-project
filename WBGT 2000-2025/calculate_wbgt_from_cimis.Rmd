@@ -227,6 +227,201 @@ abline(0, 1, col = "red", lwd = 2)
 ```
 
 
+## check calculation time alignment
+
+```{r}
+library(terra)
+library(heatmetrics)
+library(purrr)
+
+# Select ONE station-year file to test
+files <- list.files(
+  path = "cimis_hourly",
+  pattern = "\\.csv$",
+  recursive = TRUE,
+  full.names = TRUE
+)
+
+test_file <- files[1]  # Change this to your preferred file
+cat("Testing file:", test_file, "\n")
+
+dat <- read.csv(test_file)
+
+# Identify the year and load its urban raster
+file_year <- as.character(
+  sub(".*_(\\d{4})\\.csv$", "\\1", test_file)
+)
+
+urban <- rast(paste0("C:/Users/new account/Desktop/WBGT-heat-project/WBGT 0.01/urban_0.01/urban_", file_year, ".nc"))
+
+# Create input dataframe
+inputs <- data.frame(row_id = seq_len(nrow(dat)))
+
+# Original CIMIS date and hour convention
+inputs$date_local <- as.Date(dat$Date)
+
+inputs$year  <- as.integer(format(inputs$date_local, "%Y"))
+inputs$month <- as.integer(format(inputs$date_local, "%m"))
+inputs$day   <- as.integer(format(inputs$date_local, "%d"))
+
+# Your original convention: Hour 1300 -> hour 12
+inputs$hour <- dat$Hour / 100 - 1
+
+# Convert the CIMIS wall-clock time to a UTC timestamp.
+# Interpret the original wall-clock time as PST (UTC-8), then add 8 hours.
+local_wall_clock <- as.POSIXct(
+  paste(
+    inputs$date_local,
+    sprintf("%02d:00:00", inputs$hour)
+  ),
+  format = "%Y-%m-%d %H:%M:%S",
+  tz = "UTC"
+)
+
+inputs$datetime_utc <- local_wall_clock + 8 * 60 * 60
+
+# Derive all UTC date/time components from the converted timestamp
+inputs$year_utc <- as.integer(
+  format(inputs$datetime_utc, "%Y", tz = "UTC")
+)
+inputs$month_utc <- as.integer(
+  format(inputs$datetime_utc, "%m", tz = "UTC")
+)
+inputs$day_utc <- as.integer(
+  format(inputs$datetime_utc, "%d", tz = "UTC")
+)
+inputs$hour_utc <- as.integer(
+  format(inputs$datetime_utc, "%H", tz = "UTC")
+) +
+  as.integer(format(inputs$datetime_utc, "%M", tz = "UTC")) / 60
+
+# Fractional UTC day for wbgt()
+inputs$dday_utc <- inputs$day_utc + inputs$hour_utc / 24
+
+# Original fractional local day for comparison
+inputs$dday <- inputs$day + inputs$hour / 24
+
+# CIMIS meteorological inputs
+inputs$lat <- as.numeric(sub(".* / ", "", dat$latitude))
+inputs$lon <- as.numeric(sub(".* / ", "", dat$longitude))
+
+parse_cimis_value <- function(x) {
+  suppressWarnings(
+    as.numeric(sub(".*'Value': '(-?[0-9.]+)'.*", "\\1", x))
+  )
+}
+
+inputs$solar  <- parse_cimis_value(dat$HlySolRad)
+inputs$Tair   <- parse_cimis_value(dat$HlyAirTmp)
+inputs$relhum <- parse_cimis_value(dat$HlyRelHum)
+inputs$speed  <- parse_cimis_value(dat$HlyWindSpd)
+
+inputs$elev_m <- dat$elevation_ft * 0.3048
+
+# Keep rows with complete required input variables
+required <- c(
+  "year", "month", "day", "hour",
+  "year_utc", "month_utc", "day_utc", "hour_utc",
+  "lat", "lon", "solar", "Tair", "relhum", "speed", "elev_m"
+)
+
+inputs <- inputs[complete.cases(inputs[, required]), ]
+rownames(inputs) <- NULL
+```
+
+```{r}
+# Original calculation using CIMIS date and hour
+inputs$cza_local <- calc_cza_int(
+  inputs$lat, inputs$lon,
+  inputs$year, inputs$month, inputs$day,
+  inputs$hour
+)
+
+inputs$fdir_local <- mapply(
+  calc_fdir,
+  inputs$year, inputs$month, inputs$day,
+  inputs$lat, inputs$lon,
+  inputs$solar, inputs$cza_local
+)
+
+# Experimental calculation using UTC date and hour
+inputs$cza_utc <- calc_cza_int(
+  inputs$lat, inputs$lon,
+  inputs$year_utc, inputs$month_utc, inputs$day_utc,
+  inputs$hour_utc
+)
+
+inputs$fdir_utc <- mapply(
+  calc_fdir,
+  inputs$year_utc, inputs$month_utc, inputs$day_utc,
+  inputs$lat, inputs$lon,
+  inputs$solar, inputs$cza_utc
+)
+
+
+# Pressure and remaining model inputs
+inputs$pres <- 1013.25 *
+  (1 + (-0.0065 / 288.15) * inputs$elev_m)^
+  (-9.80665 * 0.0289644 / (8.31432 * -0.0065))
+
+inputs$zspeed <- 10
+inputs$dT <- -0.052
+
+# Extract urban value at the station
+point <- data.frame(
+  x = inputs$lon[1],
+  y = inputs$lat[1]
+)
+
+u <- extract(urban, point)[1, 2]
+inputs$urban <- ifelse(is.na(u), 0, u)
+
+# Baseline WBGT: original CIMIS time inputs
+inputs$wbgt_local <- pmap_dbl(
+  list(
+    inputs$year, inputs$month, inputs$dday,
+    inputs$lat, inputs$lon, inputs$solar,
+    inputs$cza_local, inputs$fdir_local,
+    inputs$pres, inputs$Tair, inputs$relhum,
+    inputs$speed, inputs$zspeed, inputs$dT, inputs$urban
+  ),
+  wbgt
+)
+
+# Experimental WBGT: UTC date/time and UTC-based solar geometry
+inputs$wbgt_utc <- pmap_dbl(
+  list(
+    inputs$year_utc, inputs$month_utc, inputs$dday_utc,
+    inputs$lat, inputs$lon, inputs$solar,
+    inputs$cza_utc, inputs$fdir_utc,
+    inputs$pres, inputs$Tair, inputs$relhum,
+    inputs$speed, inputs$zspeed, inputs$dT, inputs$urban
+  ),
+  wbgt
+)
+
+# Compare the two results
+inputs$wbgt_difference <- inputs$wbgt_utc - inputs$wbgt_local
+
+# Inspect the columns most useful for checking alignment
+head(inputs[, c(
+  "date_local", "hour", "datetime_utc", "hour_utc",
+  "solar", "cza_local", "cza_utc",
+  "fdir_local", "fdir_utc",
+  "wbgt_local", "wbgt_utc", "wbgt_difference"
+)], 24)
+
+
+
+```
+
+
+
+
+
+
+
+
 ## Batch calculation (yearly station files)
 CIMIS files one per station per year
 ```{r}

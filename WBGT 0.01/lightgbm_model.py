@@ -470,8 +470,7 @@ print(f"Total CV time: {cv_time / 60:.2f} minutes")
 results_df = pd.DataFrame(results)
 
 print(f"Total model-fold results: {len(results_df)}")
-display(results_df)
-
+print(results_df.to_string(index=False))
 
 # ============================================================
 # 7. SUMMARIZE AND SAVE RESULTS
@@ -504,7 +503,7 @@ summary = (
 )
 
 print("\nCROSS-VALIDATION SUMMARY:")
-display(summary.round(4))
+print(summary.round(4))
 
 print("\nSaving fold-level results...")
 

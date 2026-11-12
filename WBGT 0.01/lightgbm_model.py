@@ -2,7 +2,10 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# ## Downscaling modeling with LightGBM
+# ============================================================
+# Downscaling modeling with LightGBM
+# Residual prediction using station-based cross-validation
+# ============================================================
 
 import time
 from pathlib import Path
@@ -27,15 +30,15 @@ print("\n" + "=" * 65)
 print("STEP 1: DEFINING MODEL FEATURES")
 print("=" * 65)
 
-features = [
-    "era5_wbgt",
-
-    # Hourly meteorology
+# Variables explicitly excluded from model training
+excluded_features = [
     "solar", "Tair", "relhum", "speed",
     "elev_m", "cza", "fdir", "pres",
-    "zspeed", "dT",
+    "zspeed", "dT", "urban"
+]
 
-    "urban",
+# Remaining candidate predictors
+all_features = [
 
     # ASTER terrain statistics
     "aster_elev_mean", "aster_elev_sd",
@@ -71,13 +74,9 @@ features = [
     "daymet_srad",
 ]
 
-all_features = [
-    col for col in features
-    if col != "era5_wbgt"
-]
-
-print(f"Total candidate predictors: {len(all_features)}")
-print("Feature definition complete.")
+print(f"Excluded hourly meteorology variables: {len(excluded_features)}")
+print(f"Remaining candidate predictors: {len(all_features)}")
+print("Excluded variables:", excluded_features)
 
 
 # ============================================================
@@ -88,10 +87,12 @@ print("\n" + "=" * 65)
 print("STEP 2: LOADING CSV DATA")
 print("=" * 65)
 
-file_path = Path("CIMIS_WBGT_all_2000_2025_integrated_new.csv")
+file_path = Path(
+    "CIMIS_WBGT_all_2000_2025_integrated_new.csv"
+)
 
 required_cols = list(dict.fromkeys(
-    features + [
+    all_features + [
         "station_id",
         "year",
         "month",
@@ -177,7 +178,7 @@ df_full[numeric_cols] = (
     .replace([np.inf, -np.inf], np.nan)
 )
 
-print("Removing rows without target, baseline, or station ID...")
+print("Removing rows without target, reference WBGT, or station ID...")
 
 df_full = df_full.dropna(
     subset=["wbgt", "era5_wbgt", "station_id"]
@@ -296,6 +297,7 @@ print("10-fold station-based CV folds created.")
 print("Each station is assigned to only one validation fold.")
 
 
+
 # ============================================================
 # 6. RUN 10-FOLD CROSS-VALIDATION
 # ============================================================
@@ -304,12 +306,14 @@ print("\n" + "=" * 65)
 print("STEP 6: STARTING 10-FOLD LIGHTGBM CROSS-VALIDATION")
 print("=" * 65)
 
-print("Three predictor sets will be evaluated in each fold.")
+print("Two predictor sets will be evaluated in each fold.")
+print("Selected predictors will undergo pairwise correlation filtering.")
 print("This may take some time for the full 2000–2025 dataset.\n")
 
 cv_start = time.perf_counter()
 
 results = []
+
 
 for fold, (train_idx, val_idx) in enumerate(
     fold_splits, start=1
@@ -334,40 +338,122 @@ for fold, (train_idx, val_idx) in enumerate(
         f"{fold_val['station_id'].nunique()} stations"
     )
 
-    # Calculate correlations using ONLY this fold's training data
+    # --------------------------------------------------------
+    # 1. Calculate correlations with target WBGT
+    #    using ONLY this fold's training data
+    # --------------------------------------------------------
+
     print("Calculating fold-specific predictor correlations...")
 
-    corr = (
-        fold_train[features + ["wbgt"]]
+    target_corr = (
+        fold_train[all_features + ["wbgt"]]
         .corr(numeric_only=True)["wbgt"]
         .drop("wbgt")
-        .sort_values(key=abs, ascending=False)
     )
 
-    features_selected = corr[
-        (corr.abs() > 0.5) &
-        (corr.index != "era5_wbgt")
-    ].index.tolist()
+    # Select predictors with absolute correlation > 0.5
+    features_selected_initial = (
+        target_corr[
+            target_corr.abs() > 0.5
+        ]
+        .abs()
+        .sort_values(ascending=False)
+        .index
+        .tolist()
+    )
 
-    features_top = corr[
-        (corr.abs() > 0.4) &
-        (corr.index != "era5_wbgt")
-    ].index.tolist()
+    print(
+        f"Predictors with |correlation with WBGT| > 0.5: "
+        f"{len(features_selected_initial)}"
+    )
+
+    # --------------------------------------------------------
+    # 2. Remove highly correlated predictor pairs
+    #
+    # If |correlation between predictors| > 0.7,
+    # retain the predictor with the stronger absolute
+    # correlation with target WBGT.
+    #
+    # Predictors are considered in descending order of
+    # absolute correlation with target WBGT.
+    # --------------------------------------------------------
+
+    print("Checking pairwise correlations among selected predictors...")
+
+    if len(features_selected_initial) > 1:
+
+        predictor_corr = (
+            fold_train[features_selected_initial]
+            .corr(method="pearson")
+            .abs()
+        )
+
+        features_selected = []
+
+        for candidate in features_selected_initial:
+
+            # Compare candidate against predictors already retained
+            if len(features_selected) == 0:
+                features_selected.append(candidate)
+                continue
+
+            correlations_with_kept = (
+                predictor_corr.loc[
+                    candidate,
+                    features_selected
+                ]
+            )
+
+            # Remove candidate if it is highly correlated
+            # with any predictor already retained.
+            if (correlations_with_kept > 0.7).any():
+
+                correlated_features = (
+                    correlations_with_kept[
+                        correlations_with_kept > 0.7
+                    ]
+                    .index
+                    .tolist()
+                )
+
+                print(
+                    f"Removing {candidate}: |r| > 0.7 with "
+                    f"{correlated_features}"
+                )
+
+            else:
+                features_selected.append(candidate)
+
+    else:
+        features_selected = features_selected_initial.copy()
+
+    print(
+        f"Selected predictors after pairwise filtering: "
+        f"{len(features_selected)}"
+    )
+
+    print("Final selected predictors:", features_selected)
+
+    # --------------------------------------------------------
+    # 3. Define the two models
+    # --------------------------------------------------------
 
     models = {
         "LightGBM - All predictors": all_features,
-        "LightGBM - Selected predictors": features_selected,
-        "LightGBM - Top predictors": features_top
+        "LightGBM - Selected predictors (|r| > 0.5, pairwise |r| <= 0.7)": (
+            features_selected
+        )
     }
-
-    print(f"Selected predictors: {len(features_selected)}")
-    print(f"Top predictors: {len(features_top)}")
 
     y_train = fold_train["wbgt_residual"].to_numpy()
     y_val = fold_val["wbgt_residual"].to_numpy()
 
     wbgt_val = fold_val["wbgt"].to_numpy()
     era5_val = fold_val["era5_wbgt"].to_numpy()
+
+    # --------------------------------------------------------
+    # 4. Fit and evaluate each model
+    # --------------------------------------------------------
 
     for model_name, feature_cols in models.items():
 
@@ -395,36 +481,52 @@ for fold, (train_idx, val_idx) in enumerate(
 
         training_time = time.perf_counter() - model_start
 
+        # Predict residual and reconstruct corrected WBGT
         predicted_residual = model.predict(X_val)
         predicted_wbgt = era5_val + predicted_residual
 
+        # ----------------------------------------------------
         # Corrected WBGT metrics
+        # ----------------------------------------------------
+
         wbgt_rmse = np.sqrt(
             mean_squared_error(wbgt_val, predicted_wbgt)
         )
+
         wbgt_mae = mean_absolute_error(
             wbgt_val, predicted_wbgt
         )
-        wbgt_bias = np.mean(predicted_wbgt - wbgt_val)
-        wbgt_r2 = r2_score(wbgt_val, predicted_wbgt)
 
-        # ERA5 baseline metrics
-        era5_rmse = np.sqrt(
-            mean_squared_error(wbgt_val, era5_val)
+        wbgt_bias = np.mean(
+            predicted_wbgt - wbgt_val
         )
-        era5_mae = mean_absolute_error(wbgt_val, era5_val)
-        era5_bias = np.mean(era5_val - wbgt_val)
-        era5_r2 = r2_score(wbgt_val, era5_val)
 
-        # Residual metrics
+        wbgt_r2 = r2_score(
+            wbgt_val, predicted_wbgt
+        )
+
+        # ----------------------------------------------------
+        # Residual prediction metrics
+        # ----------------------------------------------------
+
         residual_rmse = np.sqrt(
             mean_squared_error(y_val, predicted_residual)
         )
+
         residual_mae = mean_absolute_error(
             y_val, predicted_residual
         )
-        residual_bias = np.mean(predicted_residual - y_val)
-        residual_r2 = r2_score(y_val, predicted_residual)
+
+        residual_bias = np.mean(
+            predicted_residual - y_val
+        )
+
+        residual_r2 = r2_score(
+            y_val, predicted_residual
+        )
+
+        # Store the exact predictor list used by this model
+        predictors_used = "; ".join(feature_cols)
 
         results.append({
             "Model": model_name,
@@ -433,15 +535,13 @@ for fold, (train_idx, val_idx) in enumerate(
             "Validation_rows": len(val_idx),
             "Train_stations": fold_train["station_id"].nunique(),
             "Validation_stations": fold_val["station_id"].nunique(),
+            "N_predictors": len(feature_cols),
+            "Predictors_used": predictors_used,
             "Training_time_sec": training_time,
             "WBGT_RMSE": wbgt_rmse,
             "WBGT_MAE": wbgt_mae,
             "WBGT_Bias": wbgt_bias,
             "WBGT_R2": wbgt_r2,
-            "ERA5_RMSE": era5_rmse,
-            "ERA5_MAE": era5_mae,
-            "ERA5_Bias": era5_bias,
-            "ERA5_R2": era5_r2,
             "Residual_RMSE": residual_rmse,
             "Residual_MAE": residual_mae,
             "Residual_Bias": residual_bias,
@@ -451,7 +551,9 @@ for fold, (train_idx, val_idx) in enumerate(
         print(
             f"Completed {model_name} | "
             f"WBGT RMSE: {wbgt_rmse:.4f} °C | "
+            f"WBGT MAE: {wbgt_mae:.4f} °C | "
             f"WBGT R²: {wbgt_r2:.4f} | "
+            f"Predictors: {len(feature_cols)} | "
             f"Training time: {training_time:.2f} sec"
         )
 
@@ -459,6 +561,7 @@ for fold, (train_idx, val_idx) in enumerate(
 
     print(f"\nFOLD {fold}/10 COMPLETE")
     print(f"Fold elapsed time: {fold_time / 60:.2f} minutes")
+
 
 cv_time = time.perf_counter() - cv_start
 
@@ -472,6 +575,9 @@ results_df = pd.DataFrame(results)
 print(f"Total model-fold results: {len(results_df)}")
 print(results_df.to_string(index=False))
 
+
+
+
 # ============================================================
 # 7. SUMMARIZE AND SAVE RESULTS
 # ============================================================
@@ -481,14 +587,11 @@ print("STEP 7: SUMMARIZING AND SAVING RESULTS")
 print("=" * 65)
 
 metrics = [
+    "N_predictors",
     "WBGT_RMSE",
     "WBGT_MAE",
     "WBGT_Bias",
     "WBGT_R2",
-    "ERA5_RMSE",
-    "ERA5_MAE",
-    "ERA5_Bias",
-    "ERA5_R2",
     "Residual_RMSE",
     "Residual_MAE",
     "Residual_Bias",
@@ -505,30 +608,68 @@ summary = (
 print("\nCROSS-VALIDATION SUMMARY:")
 print(summary.round(4))
 
+# ------------------------------------------------------------
+# Save fold-level results, including predictor lists
+# ------------------------------------------------------------
+
+fold_results_file = (
+    "lightgbm_2000_2025_cv_fold_results.csv"
+)
+
 print("\nSaving fold-level results...")
 
 results_df.to_csv(
-    "lightgbm_2000_2025_cv_fold_results.csv",
+    fold_results_file,
     index=False
+)
+
+# ------------------------------------------------------------
+# Save summary metrics
+# ------------------------------------------------------------
+
+summary_file = (
+    "lightgbm_2000_2025_cv_summary.csv"
 )
 
 print("Saving summary results...")
 
-summary.to_csv(
-    "lightgbm_2000_2025_cv_summary.csv"
+summary.to_csv(summary_file)
+
+# ------------------------------------------------------------
+# Save predictor lists separately for easier inspection
+# ------------------------------------------------------------
+
+predictor_list_file = (
+    "lightgbm_2000_2025_cv_predictors_by_fold.csv"
+)
+
+predictor_list_df = results_df[
+    [
+        "Model",
+        "Fold",
+        "N_predictors",
+        "Predictors_used"
+    ]
+].copy()
+
+predictor_list_df.to_csv(
+    predictor_list_file,
+    index=False
 )
 
 print("\nRESULTS SAVED SUCCESSFULLY")
-print(" - lightgbm_2000_2025_cv_fold_results.csv")
-print(" - lightgbm_2000_2025_cv_summary.csv")
+print(f" - {fold_results_file}")
+print(f" - {summary_file}")
+print(f" - {predictor_list_file}")
 
 print("\n" + "=" * 65)
 print("MODELING WORKFLOW COMPLETE")
 print("=" * 65)
 
+
 # Next steps:
 # 1. Choose the best-performing predictor set.
-# 2. Train the final LightGBM model using all 80% training stations.
+# 2. Train the final residual model using all 80% training stations.
 # 3. Predict residuals for the untouched 20% test stations.
 # 4. Add predicted residuals to ERA5 WBGT.
-# 5. Compare corrected WBGT against observed CIMIS WBGT and the original ERA5 baseline.
+# 5. Evaluate corrected WBGT against observed CIMIS WBGT.
